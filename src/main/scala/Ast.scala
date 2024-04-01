@@ -1,22 +1,14 @@
 object Ast {
   
   sealed trait Token
-  
-  object Literal {
-    private val toFilter: Set[Char] = Set(',')
-
-    def clean(s: String): Literal = Literal(s.filterNot(toFilter.contains))
-  }
-
-  case class Literal(v: String) extends Token
 
   enum Symbols extends Token {
-    case SELECT, FROM, WHERE, TAKE, SKIP
-    
-    def unapply(s: Symbols): Option[String] = Some(s.toString)
+    case SELECT, FROM, WHERE, TAKE, SKIP, AS
 
     def eq(str: String): Boolean = this.toString == str || this.toString.toLowerCase == str
   }
+
+  case object Coma extends Token
 
   object CondOperator {
     def findOperator(str: String): Option[CondOperator] =
@@ -54,9 +46,17 @@ object Ast {
   
   sealed trait Expr
 
-  final case class Select(columns: Seq[Literal]) extends Expr
+  final case class Literal(v: String) extends Token with Expr
+
+  final case class Column(column: String, tableRef: Option[String], alias: Option[String]) extends Expr
+
+  final case class Function(func: String, args: (Literal | Column)*) extends Expr
+
+  final case class Query(select: Select, from: From, where: Option[List[Where]]) extends Expr
+
+  final case class Select(columns: Seq[Literal])
   
-  final case class From(v: Literal) extends Expr
+  final case class From(v: Literal)
 
   trait Cond
 
@@ -77,6 +77,4 @@ object Ast {
   // final case class Skip(v: Int) extends Expr
   
   // final case class Take(v: Int) extends Expr
-  
-  final case class Query(select: Select, from: From, where: Option[List[Where]])
 }
