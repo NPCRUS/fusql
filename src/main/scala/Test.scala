@@ -1,4 +1,4 @@
-import Ast.{Coma, CondOperator, Literal, Symbols, Token}
+import Ast.{Coma, CondOperator, StrToken, Symbols, Token}
 import Parser.*
 
 object Test extends App {
@@ -9,7 +9,7 @@ object Test extends App {
    val test1 = "name, name as n1, t.name, t.name as n2 SELECT FROM"
    val preprocessed = Parser.preprocess(test1)
    println(preprocessed)
-   val parser = parseSeq(columnParser, Symbols.FROM)
+   val parser = parseSeq(columnRefParser, Symbols.FROM)
    val result = preprocessed.map(parser)
    println(result)
 }

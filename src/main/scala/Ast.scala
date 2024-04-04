@@ -10,6 +10,8 @@ object Ast {
 
   case object Coma extends Token
 
+  sealed trait AndOr
+
   object CondOperator {
     def findOperator(str: String): Option[CondOperator] =
       CondOperator.values.find(_.toString == str.toLowerCase)
@@ -19,51 +21,61 @@ object Ast {
 
     def eq(str: String): Boolean = this.token == str.toLowerCase
 
-    case And extends CondOperator("and")
-    case Or extends CondOperator("or")
+    case And extends CondOperator("and") with AndOr
+    case Or extends CondOperator("or") with AndOr
+    case Equals extends CondOperator("=")
+    case NotEquals extends CondOperator("!=")
+    case Gt extends CondOperator(">")
+    case GtThan extends CondOperator(">=")
+    case Less extends CondOperator("<")
+    case LessThan extends CondOperator("<=")
+    case Between extends CondOperator("between")
+    case Like extends CondOperator("like")
+    case In extends CondOperator("in")
+    case Is extends CondOperator("is")
   }
 
-  object ComparisonOperator {
-    def findOperator(str: String): Option[ComparisonOperator] =
-      ComparisonOperator.values.find(_.toString == str.toLowerCase)
-  }
+  final case class StrToken(v: String) extends Token
 
-  enum ComparisonOperator(token: String) extends Token {
-
-    def eq(str: String): Boolean = this.token == str.toLowerCase
-
-    case Equals extends ComparisonOperator("=")
-    case NotEquals extends ComparisonOperator("!=")
-    case Gt extends ComparisonOperator(">")
-    case GtThan extends ComparisonOperator(">=")
-    case Less extends ComparisonOperator("<")
-    case LessThan extends ComparisonOperator("<=")
-    case Between extends ComparisonOperator("between")
-    case Like extends ComparisonOperator("like")
-    case In extends ComparisonOperator("in")
-    case Is extends ComparisonOperator("is")
-  }
-  
   sealed trait Expr
 
-  final case class Literal(v: String) extends Token with Expr
+  // --------- LITERALS
+  sealed trait Literal extends Expr
 
-  final case class Column(column: String, tableRef: Option[String], alias: Option[String]) extends Expr
+  case class BooleanLiteral(value: Boolean) extends Literal
 
-  final case class Function(func: String, args: (Literal | Column)*) extends Expr
+  case class IntLiteral(value: Int) extends Literal
+
+  case class StringLiteral(value: String) extends Literal
+  // ------------------------
+
+
+  // -------- EXPRESSIONS -----------
+  // TODO: left part might not be only column ref
+  final case class BooleanExpr(operator: CondOperator, a: ColumnRef, b: BooleanExpr | Expr | ColumnRef | BooleanLiteral) extends Expr
+  
+  final case class Function(func: String, args: (Literal | ColumnRef)*) extends Expr
 
   final case class Query(select: Select, from: From, where: Option[List[Where]]) extends Expr
 
-  final case class Select(columns: Seq[Literal])
-  
-  final case class From(v: Literal)
+  // ----------------------------
+
+  final case class ColumnRef(column: String, tableRef: Option[String])
+
+  final case class Alias(input: Expr | ColumnRef, alias: String)
+
+  type SelectRef = Expr | ColumnRef | Alias
+
+  final case class Select(columns: Seq[StrToken])
+
+  final case class From(v: StrToken)
 
   trait Cond
 
-  case class SimpleCond(operator: ComparisonOperator, left: Literal, right: Literal) extends Cond
+  case class SimpleCond(operator: AndOr, left: StrToken, right: StrToken) extends Cond
 
-  case class Between(left: Literal, leftBetween: Literal, rightBetween: Literal) extends Cond {
-    def operator: ComparisonOperator = ComparisonOperator.Between
+  case class Between(left: StrToken, leftBetween: StrToken, rightBetween: StrToken) extends Cond {
+    def operator: CondOperator = CondOperator.Between
   }
   
   sealed trait Where extends Expr {
