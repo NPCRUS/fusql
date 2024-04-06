@@ -1,5 +1,6 @@
-import Ast.{BooleanLiteral, ColumnRef, IntLiteral, StrToken, StringLiteral, Symbols}
-import Parser.{ParserResult, Parser, columnRefParser, literalParser, preprocess}
+import Ast.Symbols.*
+import Ast.{StrToken as S, *}
+import Parser._
 import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
@@ -7,10 +8,10 @@ import org.scalatest.wordspec.AnyWordSpecLike
 class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
   "Parser" should {
-    "PartialParserWithErrorTest" in {
+    "PartialParserWithError " in {
       val original: Parser[Int] = {
-        case StrToken(str) +: tail if str.toIntOption.isDefined => Right(ParserResult(str.toInt, tail))
-        case StrToken("hello") +: tail => Left("wtf")
+        case S(str) +: tail if str.toIntOption.isDefined => Right(ParserResult(str.toInt, tail))
+        case S("hello") +: tail => Left("wtf")
       }
 
       val next: PartialFunction[ParserResult[Int], Either[String, ParserResult[Int]]] = {
@@ -23,10 +24,20 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
         case ParserResult(result, tail) if result > 15 => Left("wtf")
       }
 
-      parser.lift(Seq(StrToken("3"))) shouldBe None
-      parser.lift(Seq(StrToken("6"))) shouldBe Some(Right(ParserResult(6, Seq.empty)))
-      parser.lift(Seq(StrToken("hello"))) shouldBe Some(Left("wtf"))
-      parser2.lift(Seq(StrToken("16"))) shouldBe Some(Left("wtf"))
+      parser.lift(Seq(S("3"))) shouldBe None
+      parser.lift(Seq(S("6"))) shouldBe Some(Right(ParserResult(6, Seq.empty)))
+      parser.lift(Seq(S("hello"))) shouldBe Some(Left("wtf"))
+      parser2.lift(Seq(S("16"))) shouldBe Some(Left("wtf"))
+    }
+
+    "enrichWithToken" in {
+      val result = Seq(S("test(bla,bla,bla)zhopa"))
+        .flatMap(enrichWithToken(Coma))
+        .flatMap(enrichWithToken(BlockOpen))
+        .flatMap(enrichWithToken(BlockClose))
+
+      result shouldBe Seq(S("test"), BlockOpen, S("bla"), Coma, S("bla"), Coma, S("bla"), BlockClose, S("zhopa"))
+
     }
 
     "literal parser" in {
@@ -34,7 +45,7 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
         ("'321413'", ParserResult(StringLiteral("321413"), Seq.empty)),
         ("321413", ParserResult(IntLiteral(321413), Seq.empty)),
         ("true", ParserResult(BooleanLiteral(true), Seq.empty)),
-        ("false zhopa", ParserResult(BooleanLiteral(false), Seq(StrToken("zhopa")))),
+        ("false zhopa", ParserResult(BooleanLiteral(false), Seq(S("zhopa")))),
       )
 
       inOut.foreach { (in, expectation) =>
@@ -52,6 +63,33 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
       inOut.foreach { (in, expectation) =>
         preprocess(in).map(columnRefParser).value shouldBe expectation
+      }
+    }
+
+    "functionParser" in {
+      val inOut = List(
+        (
+          "count(t.name)",
+          Right(ParserResult(FunctionCall("count", Seq(ColumnRef("name", Some("t")))), Seq.empty))
+        ),
+        (
+          "concat( 'zhopa', t.name )",
+          Right(ParserResult(FunctionCall("concat", Seq(StringLiteral("zhopa"), ColumnRef("name", Some("t")))), Seq.empty))
+        ),
+        ("arr_aggr([])", Left("")),
+        ("concat( 'zhopa' t.name )", Left(""))
+      )
+
+      inOut.foreach { (in, expectation) =>
+        expectation match {
+          case Right(value) =>
+            preprocess(in).flatMap(functionParser).value shouldBe value
+          case Left(_) =>
+            val errorResult = preprocess(in).flatMap(functionParser)
+            println(errorResult.left.value)
+            errorResult.isLeft shouldBe true
+        }
+
       }
     }
   }

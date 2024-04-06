@@ -1,6 +1,8 @@
 import scala.annotation.tailrec
 import Ast._
+import Ast.Symbols._
 
+// TODO: better errors
 object Parser {
 
   case class ParserResult[+T](result: T, tail: Seq[Token])
@@ -25,11 +27,13 @@ object Parser {
       p andThen t
   }
 
-  private val forbiddenSymbols = Set("insert", "update" , "delete", "truncate")
+  private val forbiddenSymbols = Set("insert", "update" , "delete", "truncate", "drop")
+
+  private val functions: Set[String] = Set("count", "concat")
 
   def splitTokens(s: String): Seq[String] = s.split(" ")
 
-  def splitComas(s: Seq[String]): Seq[String] = {
+  def splitAndEnrich(s: Seq[String], token: Token): Seq[String] = {
     @tailrec
     def addComa(acc: Seq[String], rest: Seq[String]): Seq[String] = rest match
       case Seq() => acc
@@ -49,14 +53,17 @@ object Parser {
     case Nil => Right(tokens)
     case some => Left(s"Bumped into some forbidden keywords: ${some.mkString(",")}")
 
+  def enrichWithToken(token: Symbols)(input: Token): Seq[Token] = input match {
+    case StrToken(v) if v.contains(token.repr) =>
+      v.split(token.repr.toCharArray.apply(0)).toSeq match
+        case head +: Seq() => Seq(StrToken(head), token)
+        case seq => seq.flatMap(e => Seq(StrToken(e), token)).dropRight(1)
+    case rest => Seq(rest)
+  }
+
   def parseToTokens(tokens: Seq[String]): Seq[Token] = tokens.map { str =>
     Symbols.values.find(_.eq(str)) orElse
-      CondOperator.values.find(_.eq(str)) orElse
-      CondOperator.values.find(_.eq(str)) orElse
-      (str match
-        case "," => Some(Coma)
-        case _ => None
-      ) getOrElse
+      CondOperator.values.find(_.eq(str)) getOrElse
       StrToken(str)
   }
 
@@ -89,11 +96,17 @@ object Parser {
       ParserResult(ColumnRef(column, None), tail)
   }
 
-  lazy val functionParser: PartialParser[Function] = {
-    // TODO: include expressions
-    val argParser: PartialParser[Literal | ColumnRef] = columnRefParser orElse literalParser
+  // TODO: support 'arg1 func arg2 ...' notation
+  val functionParser: Parser[FunctionCall] = {
+    lazy val argParser: PartialParser[Literal | ColumnRef] = literalParser orElse columnRefParser
 
-    ???
+    {
+      case StrToken(func) +: BlockOpen +: tail if functions.contains(func.toLowerCase) =>
+        parseSeq(argParser, BlockClose)(tail).map(v => v.copy(
+          result = FunctionCall(func, v.result)
+        ))
+      case head +: tail => Left(s"Cannot parse function at $head, rest: ${tail.mkString(" ")}")
+    }
   }
 
   lazy val expressionParser: PartialParser[Expr] =
@@ -101,7 +114,7 @@ object Parser {
 
   lazy val aliasParser: PartialParser[Alias] = {
     val inner: PartialFunction[ParserResult[Expr | ColumnRef], ParserResult[Alias]] = {
-      case ParserResult(e, Symbols.AS +: StrToken(alias) +: tail) => ParserResult(Alias(e, alias), tail)
+      case ParserResult(e, AS +: StrToken(alias) +: tail) => ParserResult(Alias(e, alias), tail)
     }
 
     (columnRefParser andThen inner) orElse (expressionParser andThen inner)
@@ -116,7 +129,7 @@ object Parser {
 //      case (Some(v), Seq()) => Right(ParserResult(v, Seq.empty))
 //      case (Some(v), (head@(Coma | _: Symbols | _: CondOperator)) +: tail) => ???
 //      case (Some(v), Coma +: tail) => Right(ParserResult(v, tail))
-//      case (Some(v), Symbols.AS +: Literal(alias) +: tail) => ???
+//      case (Some(v), AS +: Literal(alias) +: tail) => ???
 //    }
 //
 //    inner(None, tokens)
@@ -126,8 +139,8 @@ object Parser {
     @tailrec
     def inner(rest: Seq[Token], columns: Seq[StrToken]): Either[String, (Seq[StrToken], Seq[Token])] = rest match
       case Nil if columns.isEmpty => Left(s"There are no columns for SELECT")
-      case Symbols.FROM +: Nil => Left(s"There are no columns for SELECT, next token FROM")
-      case Symbols.FROM +: tail => Right((columns, tail))
+      case FROM +: Nil => Left(s"There are no columns for SELECT, next token FROM")
+      case FROM +: tail => Right((columns, tail))
       case (head: StrToken) +: StrToken(",") +: tail => inner(tail, columns :+ head)
       case (head: StrToken) +: tail => inner(tail, columns :+ head)
       case rest => Left(s"Got strange sequence of tokens when parsing select: ${rest.mkString(" ")}")
@@ -140,7 +153,7 @@ object Parser {
     case head +: _ => Left(s"Expected table name after FROM, got $head")
 
   def parseWhere(tokens: Seq[Token]): Either[String, Option[List[Where]]] = tokens match
-    case head +: _ if !Symbols.WHERE.eq(head) => Right(None)
+    case head +: _ if !WHERE.eq(head) => Right(None)
     case _ +: tail =>
       def inner(acc: List[Where], tail: Seq[Token]): Either[String, List[Where]] = tail match
         case Nil => Right(acc)
@@ -163,7 +176,7 @@ object Parser {
         Left(s"Got strange sequence of tokens when trying to parse cond: ${seq.mkString(" ")}")
 
   val queryParserOld: PartialFunction[Seq[Token], Either[String, ParserResult[Query]]] = {
-    case head +: tail if Symbols.SELECT.eq(head) =>
+    case head +: tail if SELECT.eq(head) =>
       for {
         result <- parseUntilFrom(tail)
         (columns, tail2) = result
@@ -181,13 +194,18 @@ object Parser {
 
   def preprocess(s: String): Either[String, Seq[Token]] =
     filter(splitTokens(s))
-      .flatMap(v => Right(splitComas(v)))
       .map(parseToTokens)
+      .map { seq =>
+        seq
+          .flatMap(enrichWithToken(Coma))
+          .flatMap(enrichWithToken(BlockOpen))
+          .flatMap(enrichWithToken(BlockClose))
+      }
 
   def parse(s: String): Either[String, Query] =
     preprocess(s)
       .flatMap(queryParserOld orElse {
-        case head +: _ => Left(s"Query starts with $head not with ${Symbols.SELECT}")
+        case head +: _ => Left(s"Query starts with $head not with ${SELECT}")
       })
       .map(_.result)
 }

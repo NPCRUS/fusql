@@ -1,4 +1,4 @@
-import Ast.{Coma, CondOperator, StrToken, Symbols, Token}
+import Ast.{CondOperator, StrToken, Symbols, Token}
 import Parser.*
 
 object Test extends App {

@@ -2,13 +2,21 @@ object Ast {
   
   sealed trait Token
 
-  enum Symbols extends Token {
-    case SELECT, FROM, WHERE, TAKE, SKIP, AS
+  enum Symbols(token: String) extends Token {
+    case SELECT extends Symbols("select")
+    case FROM extends Symbols("from")
+    case WHERE extends Symbols("where")
+    case TAKE extends Symbols("take")
+    case SKIP extends Symbols("skip")
+    case AS extends Symbols("as")
+    case Coma extends Symbols(",")
+    case BlockOpen extends Symbols("(")
+    case BlockClose extends Symbols(")")
 
-    def eq(str: String): Boolean = this.toString == str || this.toString.toLowerCase == str
+    def eq(str: String): Boolean = token == str.toLowerCase
+    
+    def repr: String = token
   }
-
-  case object Coma extends Token
 
   sealed trait AndOr
 
@@ -52,9 +60,9 @@ object Ast {
 
   // -------- EXPRESSIONS -----------
   // TODO: left part might not be only column ref
-  final case class BooleanExpr(operator: CondOperator, a: ColumnRef, b: BooleanExpr | Expr | ColumnRef | BooleanLiteral) extends Expr
+  final case class FunctionCall(func: String, args: Seq[Literal | ColumnRef]) extends Expr
   
-  final case class Function(func: String, args: (Literal | ColumnRef)*) extends Expr
+  // final case class ExpressionSplit(elems: ColumnRef | StringLiteral) extends Expr
 
   final case class Query(select: Select, from: From, where: Option[List[Where]]) extends Expr
 
