@@ -1,218 +1,47 @@
-import scala.annotation.tailrec
-import Ast._
-import Ast.Symbols._
+import Ast.Token
 
-// TODO: better errors
+case class ParserResult[+T](result: T, tail: Seq[Token])
+
+sealed trait Parser[M[_], T] {
+  import Parser._
+
+  def apply(input: Seq[Token]): M[ParserResult[T]]
+}
+
+type ErrOr[T] = Either[String, T]
+
 object Parser {
 
-  case class ParserResult[+T](result: T, tail: Seq[Token])
+  case class PartialParser[T](f: PartialFunction[Seq[Token], ParserResult[T]]) extends Parser[Option, T] {
+    override def apply(input: Seq[Token]): Option[ParserResult[T]] = f.lift(input)
 
-  type PartialParser[T] = PartialFunction[Seq[Token], ParserResult[T]]
-
-  extension [T](p: PartialParser[T]) {
-    def lift: Parser[T] = p andThen Right.apply
-  }
-
-  type Parser[T] = PartialFunction[Seq[Token], Either[String, ParserResult[T]]]
-
-  extension [T](p: Parser[T]) {
-    def flatMap[B](f: PartialFunction[ParserResult[T], Either[String, ParserResult[B]]]): Parser[B] =
-      val t: PartialFunction[Either[String, ParserResult[T]], Either[String, ParserResult[B]]] = {
-        case Right(value) if f.isDefinedAt(value) =>
-          f(value)
-        case Left(value) =>
-          Left(value)
+    def orElse[B](that: PartialParser[B]): PartialParser[T | B] = PartialParser(f orElse that.f)
+    
+    def full(parserName: String = "unknown"): FullParser[T] = FullParser(
+      f.lift andThen {
+        case None => Left(s"Cannot parse $parserName")
+        case Some(value) => Right(value)
       }
-
-      p andThen t
-  }
-
-  private val forbiddenSymbols = Set("insert", "update" , "delete", "truncate", "drop")
-
-  private val functions: Set[String] = Set("count", "concat")
-
-  def splitTokens(s: String): Seq[String] = s.split(" ")
-
-  def splitAndEnrich(s: Seq[String], token: Token): Seq[String] = {
-    @tailrec
-    def addComa(acc: Seq[String], rest: Seq[String]): Seq[String] = rest match
-      case Seq() => acc
-      case Seq(last) => acc :+ last
-      case head +: tail =>
-        addComa(acc.concat(Seq(head, ",")), tail)
-
-    s.flatMap(str => str.split(",").toSeq match
-      case Seq(value) if str.contains(',') => Seq(value, ",")
-      case seq if str.contains(',') =>
-        addComa(Seq.empty, seq)
-      case rest => rest
     )
   }
 
-  def filter(tokens: Seq[String]): Either[String, Seq[String]] = forbiddenSymbols.filter(tokens.contains).toList match
-    case Nil => Right(tokens)
-    case some => Left(s"Bumped into some forbidden keywords: ${some.mkString(",")}")
-
-  def enrichWithToken(token: Symbols)(input: Token): Seq[Token] = input match {
-    case StrToken(v) if v.contains(token.repr) =>
-      v.split(token.repr.toCharArray.apply(0)).toSeq match
-        case head +: Seq() => Seq(StrToken(head), token)
-        case seq => seq.flatMap(e => Seq(StrToken(e), token)).dropRight(1)
-    case rest => Seq(rest)
-  }
-
-  def parseToTokens(tokens: Seq[String]): Seq[Token] = tokens.map { str =>
-    Symbols.values.find(_.eq(str)) orElse
-      CondOperator.values.find(_.eq(str)) getOrElse
-      StrToken(str)
-  }
-
-  def parseSeq[T](f: PartialParser[T], until: Token)(tokens: Seq[Token]): Either[String, ParserResult[Seq[T]]] = {
-    @tailrec
-    def inner(rest: Seq[Token], acc: Seq[T]): Either[String, ParserResult[Seq[T]]] = {
-      f.lift(rest) match
-        case None => Left(s"Cannot parse sequence: ${rest.mkString(" ")}")
-        case Some(ParserResult(result, Seq())) => Right(ParserResult(acc :+ result, Seq()))
-        case Some(ParserResult(result, head +: tail)) if head == until =>
-          Right(ParserResult(acc :+ result, tail))
-        case Some(ParserResult(result, Coma +: tail)) => inner(tail, acc :+ result)
-        case Some(ParserResult(_, head +: tail)) =>
-          Left(s"Cannot parse sequence, bumped into ${head.toString}, rest: ${tail.mkString(" ")}")
-    }
-
-    inner(tokens, Seq.empty)
-  }
-
-  val literalParser: PartialParser[Literal] = {
-    case StrToken(s"'$str'") +: tail => ParserResult(StringLiteral(str), tail)
-    case StrToken(str) +: tail  if str.toIntOption.isDefined => ParserResult(IntLiteral(str.toInt), tail)
-    case StrToken(str) +: tail if str.toBooleanOption.isDefined => ParserResult(BooleanLiteral(str.toBoolean), tail)
-  }
-
-  val columnRefParser: PartialParser[ColumnRef] = {
-    case StrToken(s"$tableRef.$column") +: tail =>
-      ParserResult(ColumnRef(column, Some(tableRef)), tail)
-    case StrToken(column) +: tail =>
-      ParserResult(ColumnRef(column, None), tail)
-  }
-
-  // TODO: support 'arg1 func arg2 ...' notation
-  val functionParser: Parser[FunctionCall] = {
-    lazy val argParser: PartialParser[Literal | ColumnRef] = literalParser orElse columnRefParser
-
-    {
-      case StrToken(func) +: BlockOpen +: tail if functions.contains(func.toLowerCase) =>
-        parseSeq(argParser, BlockClose)(tail).map(v => v.copy(
-          result = FunctionCall(func, v.result)
-        ))
-      case head +: tail => Left(s"Cannot parse function at $head, rest: ${tail.mkString(" ")}")
-    }
-  }
-
-  lazy val expressionParser: PartialParser[Expr] =
-    literalParser
-
-  lazy val aliasParser: PartialParser[Alias] = {
-    val inner: PartialFunction[ParserResult[Expr | ColumnRef], ParserResult[Alias]] = {
-      case ParserResult(e, AS +: StrToken(alias) +: tail) => ParserResult(Alias(e, alias), tail)
-    }
-
-    (columnRefParser andThen inner) orElse (expressionParser andThen inner)
-  }
-
-//  val columnParser_ : PartialParser[Column] = (tokens: Seq[Token]) => {
-//    def inner(column: Option[Column], tokens: Seq[Token]): Either[String, ParserResult[Column]] = (column, tokens) match {
-//      case (None, Seq()) => Left("nothing to parse")
-//      case (None, Literal(s"$tableRef.$column") +: tail) => inner(Some(Column(column, Some(tableRef), None)), tail)
-//      case (None, Literal(column) +: tail) => inner(Some(Column(column, None, None)), tail)
-//      case (None, head +: _) => Left(s"Tried to parse $head into column")
-//      case (Some(v), Seq()) => Right(ParserResult(v, Seq.empty))
-//      case (Some(v), (head@(Coma | _: Symbols | _: CondOperator)) +: tail) => ???
-//      case (Some(v), Coma +: tail) => Right(ParserResult(v, tail))
-//      case (Some(v), AS +: Literal(alias) +: tail) => ???
-//    }
-//
-//    inner(None, tokens)
-//  }
-
-  def parseUntilFrom(tokens: Seq[Token]): Either[String, (Seq[StrToken], Seq[Token])] = {
-    @tailrec
-    def inner(rest: Seq[Token], columns: Seq[StrToken]): Either[String, (Seq[StrToken], Seq[Token])] = rest match
-      case Nil if columns.isEmpty => Left(s"There are no columns for SELECT")
-      case FROM +: Nil => Left(s"There are no columns for SELECT, next token FROM")
-      case FROM +: tail => Right((columns, tail))
-      case (head: StrToken) +: StrToken(",") +: tail => inner(tail, columns :+ head)
-      case (head: StrToken) +: tail => inner(tail, columns :+ head)
-      case rest => Left(s"Got strange sequence of tokens when parsing select: ${rest.mkString(" ")}")
-
-    inner(tokens, Seq.empty)
-  }
-
-  def parseFrom(tokens: Seq[Token]): Either[String, StrToken] = tokens match
-    case (head: StrToken) +: _ => Right(head)
-    case head +: _ => Left(s"Expected table name after FROM, got $head")
-
-  def parseWhere(tokens: Seq[Token]): Either[String, Option[List[Where]]] = tokens match
-    case head +: _ if !WHERE.eq(head) => Right(None)
-    case _ +: tail =>
-      def inner(acc: List[Where], tail: Seq[Token]): Either[String, List[Where]] = tail match
-        case Nil => Right(acc)
-        case seq => parseCond(seq) match
-          case Left(value) => Left(value)
-          case Right((cond, Nil)) =>
-            Right(acc.appended(WhereAnd(cond)))
-          case Right((cond, CondOperator.And +: tail)) => inner(acc.appended(WhereAnd(cond)), tail)
-          case Right((cond, CondOperator.Or +: tail)) => inner(acc.appended(WhereOr(cond)), tail)
-
-      inner(List.empty, tail).map(Some.apply)
-
-  def parseCond(tokens: Seq[Token]): Either[String, (Cond, Seq[Token])] =
-    tokens match
-      case (left: StrToken) +: (c: AndOr) +: (right: StrToken) +: rest if c != CondOperator.Between =>
-        Right(SimpleCond(c, left, right), rest)
-      case (left: StrToken) +: CondOperator.Between +: (leftBetween: StrToken) +: CondOperator.And +: (rightBetween: StrToken) +: rest =>
-        Right(Between(left, leftBetween, rightBetween), rest)
-      case seq =>
-        Left(s"Got strange sequence of tokens when trying to parse cond: ${seq.mkString(" ")}")
-
-  val queryParserOld: PartialFunction[Seq[Token], Either[String, ParserResult[Query]]] = {
-    case head +: tail if SELECT.eq(head) =>
-      for {
-        result <- parseUntilFrom(tail)
-        (columns, tail2) = result
-        select = Select(columns)
-
-        fromLiteral <- parseFrom(tail2)
-        from = From(fromLiteral)
-
-        tail3 = tail2.tail
-        where <- parseWhere(tail3)
-
-      } yield ParserResult(Query(select, from, where), ???)
-
-  }
-
-  def preprocess(s: String): Either[String, Seq[Token]] =
-    filter(splitTokens(s))
-      .map(parseToTokens)
-      .map { seq =>
-        seq
-          .flatMap(enrichWithToken(Coma))
-          .flatMap(enrichWithToken(BlockOpen))
-          .flatMap(enrichWithToken(BlockClose))
+  case class FullParser[T](f: Seq[Token] => ErrOr[ParserResult[T]]) extends Parser[ErrOr, T] {
+    override def apply(input: Seq[Token]): ErrOr[ParserResult[T]] = f(input)
+    
+    def orElse[B](that: FullParser[B]): FullParser[T | B] =
+      FullParser { seq =>
+        f(seq) match
+          case Left(value) => that.f(seq)
+          case Right(value) => Right(value)
       }
 
-  def parse(s: String): Either[String, Query] =
-    preprocess(s)
-      .flatMap(queryParserOld orElse {
-        case head +: _ => Left(s"Query starts with $head not with ${SELECT}")
-      })
-      .map(_.result)
+    def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): FullParser[B] = FullParser { seq =>
+      this.f(seq).flatMap(f)
+    }
+  }
+
+  def partial[T](f: PartialFunction[Seq[Token], ParserResult[T]]): PartialParser[T] = PartialParser(f)
+
+  def full[T](f: Seq[Token] => ErrOr[ParserResult[T]]): FullParser[T] = FullParser(f)
+
 }
-
-
-/*
-
-  SELECT * FROM table WHERE 1=1 TAKE 10 SKIP 10
-
- */

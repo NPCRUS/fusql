@@ -61,12 +61,14 @@ object Ast {
   // -------- EXPRESSIONS -----------
   // TODO: left part might not be only column ref
   final case class FunctionCall(func: String, args: Seq[Literal | ColumnRef]) extends Expr
-  
-  // final case class ExpressionSplit(elems: ColumnRef | StringLiteral) extends Expr
 
   final case class Query(select: Select, from: From, where: Option[List[Where]]) extends Expr
 
   // ----------------------------
+
+  sealed trait BooleanExpr
+
+  final case class BooleanExprImpl(operator: CondOperator, a: Expr | ColumnRef, b: Expr)
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
