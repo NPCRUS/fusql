@@ -1,9 +1,11 @@
 import Ast.Symbols.*
 import Ast.{StrToken as S, *}
-import Parsers._
+import Parsers.*
 import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
+
+import scala.util.Right
 
 class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
@@ -29,6 +31,16 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
       inOut.foreach { (in, expectation) =>
         preprocess(in).map(literalParser.apply).value shouldBe expectation
+      }
+    }
+
+    "parseSeq" in {
+      val inOut = List(
+        ("'321413'", Right(ParserResult(List(StringLiteral("321413")), Seq.empty))),
+      )
+
+      inOut.foreach { (in, expectation) =>
+        preprocess(in).flatMap(parseSeq(literalParser.full(""), FROM).apply) shouldBe expectation
       }
     }
 
@@ -126,6 +138,31 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
             preprocess(in).flatMap(aliasParser.apply).value shouldBe value
           case Left(_) =>
             val errorResult = preprocess(in).flatMap(aliasParser.apply)
+            println(errorResult.left.value)
+            errorResult.isLeft shouldBe true
+        }
+
+      }
+    }
+
+    "queryParser" in {
+      val inOut = List(
+        (
+          "select name from table",
+          Right(ParserResult(Query(List(ColumnRef("name", None)), S("table")), Seq.empty))
+        ),
+        (
+          "true",
+          Left("")
+        )
+      )
+
+      inOut.foreach { (in, expectation) =>
+        expectation match {
+          case Right(value) =>
+            preprocess(in).flatMap(queryParser.apply).value shouldBe value
+          case Left(_) =>
+            val errorResult = preprocess(in).flatMap(queryParser.apply)
             println(errorResult.left.value)
             errorResult.isLeft shouldBe true
         }

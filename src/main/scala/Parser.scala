@@ -38,6 +38,10 @@ object Parser {
     def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): FullParser[B] = FullParser { seq =>
       this.f(seq).flatMap(f)
     }
+    
+    def map[B](f: T => B): FullParser[B] = FullParser { seq =>
+      this.f(seq).map(v => v.copy(result = f(v.result)))
+    }
   }
 
   def partial[T](f: PartialFunction[Seq[Token], ParserResult[T]]): PartialParser[T] = PartialParser(f)

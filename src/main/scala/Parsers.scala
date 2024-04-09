@@ -68,53 +68,64 @@ object Parsers {
       StrToken(str)
   }
   
-  def parseSeq_[T](f: Parser[Option, T], until: Token): Parser[ErrOr, Seq[T]] = {
+  def parseSeq[T](f: FullParser[T], until: Token): Parser[ErrOr, Seq[T]] = {
     @tailrec
     def inner(rest: Seq[Token], acc: Seq[T]): Either[String, ParserResult[Seq[T]]] = {
       f.apply(rest) match
-        case None => Left(s"Cannot parse sequence: ${rest.mkString(" ")}")
-        case Some(ParserResult(result, Seq())) => Right(ParserResult(acc :+ result, Seq()))
-        case Some(ParserResult(result, head +: tail)) if head == until =>
+        case Left(err) => Left(s"Cannot parse sequence: $err")
+        case Right(ParserResult(result, Seq())) => Right(ParserResult(acc :+ result, Seq()))
+        case Right(ParserResult(result, head +: tail)) if head == until =>
           Right(ParserResult(acc :+ result, tail))
-        case Some(ParserResult(result, Coma +: tail)) => inner(tail, acc :+ result)
-        case Some(ParserResult(_, head +: tail)) =>
+        case Right(ParserResult(result, Coma +: tail)) => inner(tail, acc :+ result)
+        case Right(ParserResult(_, head +: tail)) =>
           Left(s"Cannot parse sequence, bumped into ${head.toString}, rest: ${tail.mkString(" ")}")
     }
 
     Parser.full { tokens =>
       inner(tokens, Seq.empty)
     }
-    
+
   }
-  
+
   val literalParser : PartialParser[Literal] = Parser.partial {
     case StrToken(s"'$str'") +: tail => ParserResult(StringLiteral(str), tail)
     case StrToken(str) +: tail if str.toIntOption.isDefined => ParserResult(IntLiteral(str.toInt), tail)
     case StrToken(str) +: tail if str.toBooleanOption.isDefined => ParserResult(BooleanLiteral(str.toBoolean), tail)
   }
-  
+
   val columnRefParser : PartialParser[ColumnRef] = Parser.partial {
     case StrToken(s"$tableRef.$column") +: tail =>
       ParserResult(ColumnRef(column, Some(tableRef)), tail)
     case StrToken(column) +: tail =>
       ParserResult(ColumnRef(column, None), tail)
   }
-  
+
   // TODO: support 'arg1 func arg2 ...' notation
   val functionParser : FullParser[FunctionCall] = {
     lazy val argParser = literalParser.orElse(columnRefParser)
-    
+
     Parser.full {
       case StrToken(func) +: BlockOpen +: tail if functions.contains(func.toLowerCase) =>
-        parseSeq_(argParser, BlockClose)(tail).map(v => v.copy(
+        parseSeq(argParser.full("argParser"), BlockClose)(tail).map(v => v.copy(
           result = FunctionCall(func, v.result)
         ))
       case head +: tail => Left(s"Cannot parse function at $head, rest: ${tail.mkString(" ")}")
     }
   }
 
-  val queryParser: FullParser[Query] = Parser.full {
-    case seq => Left("")
+  lazy val queryParser: FullParser[Query] = Parser.full {
+    case SELECT +: tail =>
+      for {
+        selectRefs <- parseSeq[SelectRef](
+          columnRefParser.full("columnRef").orElse(aliasParser),
+          FROM
+        )(tail)
+        from <- tableAliasParser.orElse(Parser.full {
+          case (s: StrToken) +: tail => Right(ParserResult(s, tail))
+          case head +: tail => Left(s"Cannot parse from at $head, rest: ${tail.mkString(" ")}")
+        })(selectRefs.tail)
+      } yield ParserResult(Query(selectRefs.result, from.result), from.tail)
+    case head +: tail => Left(s"Cannot parse query at $head, rest: ${tail.mkString(" ")}")
   }
   
   val expressionParser: FullParser[Expr] = {
@@ -123,8 +134,16 @@ object Parsers {
 
   val aliasParser: FullParser[Alias] =
     expressionParser.orElse(columnRefParser.full("columnRef")).flatMap {
-      case ParserResult(e, AS +: StrToken(alias) +: tail) => Right(ParserResult(Alias(e, alias), tail))
-      case ParserResult(_, tail) => Left(s"Cannot parse alias at ${tail.mkString(" ")}")
+      case ParserResult(e, AS +: StrToken(alias) +: tail) =>
+        Right(ParserResult(Alias(e, alias), tail))
+      case ParserResult(_, tail) =>
+        Left(s"Cannot parse alias at ${tail.mkString(" ")}")
+    }
+
+  val tableAliasParser: FullParser[TableAlias] =
+    queryParser.orElse(expressionParser).flatMap {
+      case ParserResult(e, AS +: StrToken(alias) +: tail) => Right(ParserResult(TableAlias(e, alias), tail))
+      case ParserResult(_, tail) => Left(s"Cannot parse tableAlias at ${tail.mkString(" ")}")
     }
 
   def parseUntilFrom(tokens: Seq[Token]): Either[String, (Seq[StrToken], Seq[Token])] = {
@@ -167,7 +186,7 @@ object Parsers {
       case seq =>
         Left(s"Got strange sequence of tokens when trying to parse cond: ${seq.mkString(" ")}")
 
-  val queryParserOld: PartialFunction[Seq[Token], Either[String, ParserResultOld[Query]]] = {
+  val queryParserOld: PartialFunction[Seq[Token], Either[String, ParserResultOld[QueryOld]]] = {
     case head +: tail if SELECT.eq(head) =>
       for {
         result <- parseUntilFrom(tail)
@@ -180,7 +199,7 @@ object Parsers {
         tail3 = tail2.tail
         where <- parseWhere(tail3)
 
-      } yield ParserResultOld(Query(select, from, where), ???)
+      } yield ParserResultOld(QueryOld(select, from, where), ???)
 
   }
 
@@ -194,7 +213,7 @@ object Parsers {
           .flatMap(enrichWithToken(BlockClose))
       }
 
-  def parse(s: String): Either[String, Query] =
+  def parse(s: String): Either[String, QueryOld] =
     preprocess(s)
       .flatMap(queryParserOld orElse {
         case head +: _ => Left(s"Query starts with $head not with ${SELECT}")

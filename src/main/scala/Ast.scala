@@ -62,7 +62,9 @@ object Ast {
   // TODO: left part might not be only column ref
   final case class FunctionCall(func: String, args: Seq[Literal | ColumnRef]) extends Expr
 
-  final case class Query(select: Select, from: From, where: Option[List[Where]]) extends Expr
+  final case class QueryOld(select: Select, from: From, where: Option[List[Where]]) extends Expr
+  
+  final case class Query(select: Seq[SelectRef], from: StrToken | TableAlias)
 
   // ----------------------------
 
@@ -73,8 +75,11 @@ object Ast {
   final case class ColumnRef(column: String, tableRef: Option[String])
 
   final case class Alias(input: Expr | ColumnRef, alias: String)
+  
+  final case class TableAlias(input: Expr | Query | StrToken, alias: String)
 
-  type SelectRef = Expr | ColumnRef | Alias
+  // TODO: add Expr
+  type SelectRef = ColumnRef | Alias
 
   final case class Select(columns: Seq[StrToken])
 
