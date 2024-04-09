@@ -62,44 +62,22 @@ object Ast {
   // TODO: left part might not be only column ref
   final case class FunctionCall(func: String, args: Seq[Literal | ColumnRef]) extends Expr
 
-  final case class QueryOld(select: Select, from: From, where: Option[List[Where]]) extends Expr
-  
   final case class Query(select: Seq[SelectRef], from: StrToken | TableAlias)
 
   // ----------------------------
 
   sealed trait BooleanExpr
 
-  final case class BooleanExprImpl(operator: CondOperator, a: Expr | ColumnRef, b: Expr)
+  final case class BooleanExprImpl(operator: CondOperator, a: Expr | ColumnRef, b: Expr) extends BooleanExpr
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
   final case class Alias(input: Expr | ColumnRef, alias: String)
-  
+
   final case class TableAlias(input: Expr | Query | StrToken, alias: String)
 
   // TODO: add Expr
   type SelectRef = ColumnRef | Alias
-
-  final case class Select(columns: Seq[StrToken])
-
-  final case class From(v: StrToken)
-
-  trait Cond
-
-  case class SimpleCond(operator: AndOr, left: StrToken, right: StrToken) extends Cond
-
-  case class Between(left: StrToken, leftBetween: StrToken, rightBetween: StrToken) extends Cond {
-    def operator: CondOperator = CondOperator.Between
-  }
-  
-  sealed trait Where extends Expr {
-    def head: Cond
-  }
-  
-  case class WhereAnd(head: Cond) extends Where
-  
-  case class WhereOr(head: Cond) extends Where
   
   // final case class Skip(v: Int) extends Expr
   

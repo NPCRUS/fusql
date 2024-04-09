@@ -146,63 +146,6 @@ object Parsers {
       case ParserResult(_, tail) => Left(s"Cannot parse tableAlias at ${tail.mkString(" ")}")
     }
 
-  def parseUntilFrom(tokens: Seq[Token]): Either[String, (Seq[StrToken], Seq[Token])] = {
-    @tailrec
-    def inner(rest: Seq[Token], columns: Seq[StrToken]): Either[String, (Seq[StrToken], Seq[Token])] = rest match
-      case Nil if columns.isEmpty => Left(s"There are no columns for SELECT")
-      case FROM +: Nil => Left(s"There are no columns for SELECT, next token FROM")
-      case FROM +: tail => Right((columns, tail))
-      case (head: StrToken) +: StrToken(",") +: tail => inner(tail, columns :+ head)
-      case (head: StrToken) +: tail => inner(tail, columns :+ head)
-      case rest => Left(s"Got strange sequence of tokens when parsing select: ${rest.mkString(" ")}")
-
-    inner(tokens, Seq.empty)
-  }
-
-  def parseFrom(tokens: Seq[Token]): Either[String, StrToken] = tokens match
-    case (head: StrToken) +: _ => Right(head)
-    case head +: _ => Left(s"Expected table name after FROM, got $head")
-
-  def parseWhere(tokens: Seq[Token]): Either[String, Option[List[Where]]] = tokens match
-    case head +: _ if !WHERE.eq(head) => Right(None)
-    case _ +: tail =>
-      def inner(acc: List[Where], tail: Seq[Token]): Either[String, List[Where]] = tail match
-        case Nil => Right(acc)
-        case seq => parseCond(seq) match
-          case Left(value) => Left(value)
-          case Right((cond, Nil)) =>
-            Right(acc.appended(WhereAnd(cond)))
-          case Right((cond, CondOperator.And +: tail)) => inner(acc.appended(WhereAnd(cond)), tail)
-          case Right((cond, CondOperator.Or +: tail)) => inner(acc.appended(WhereOr(cond)), tail)
-
-      inner(List.empty, tail).map(Some.apply)
-
-  def parseCond(tokens: Seq[Token]): Either[String, (Cond, Seq[Token])] =
-    tokens match
-      case (left: StrToken) +: (c: AndOr) +: (right: StrToken) +: rest if c != CondOperator.Between =>
-        Right(SimpleCond(c, left, right), rest)
-      case (left: StrToken) +: CondOperator.Between +: (leftBetween: StrToken) +: CondOperator.And +: (rightBetween: StrToken) +: rest =>
-        Right(Between(left, leftBetween, rightBetween), rest)
-      case seq =>
-        Left(s"Got strange sequence of tokens when trying to parse cond: ${seq.mkString(" ")}")
-
-  val queryParserOld: PartialFunction[Seq[Token], Either[String, ParserResultOld[QueryOld]]] = {
-    case head +: tail if SELECT.eq(head) =>
-      for {
-        result <- parseUntilFrom(tail)
-        (columns, tail2) = result
-        select = Select(columns)
-
-        fromLiteral <- parseFrom(tail2)
-        from = From(fromLiteral)
-
-        tail3 = tail2.tail
-        where <- parseWhere(tail3)
-
-      } yield ParserResultOld(QueryOld(select, from, where), ???)
-
-  }
-
   def preprocess(s: String): Either[String, Seq[Token]] =
     filter(splitTokens(s))
       .map(parseToTokens)
@@ -213,11 +156,9 @@ object Parsers {
           .flatMap(enrichWithToken(BlockClose))
       }
 
-  def parse(s: String): Either[String, QueryOld] =
+  def parse(s: String): Either[String, Query] =
     preprocess(s)
-      .flatMap(queryParserOld orElse {
-        case head +: _ => Left(s"Query starts with $head not with ${SELECT}")
-      })
+      .flatMap(queryParser.apply)
       .map(_.result)
 }
 
