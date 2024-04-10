@@ -112,6 +112,36 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       }
     }
 
+    "booleanExprParser" in {
+      val inOut = List(
+        (
+          "1 = 1",
+          Right(ParserResult(BooleanExprImpl(CondOperator.Equals, IntLiteral(1), IntLiteral(1)), Seq.empty))
+        ),
+        (
+          "name like '%zhopa%'",
+          Right(ParserResult(BooleanExprImpl(CondOperator.Like, ColumnRef("name", None), StringLiteral("%zhopa%")), Seq.empty))
+        ),
+        (
+          "table1.isAdmin OR table1.isAJoke",
+          Right(ParserResult(BooleanExprImpl(CondOperator.Or, ColumnRef("isAdmin", Some("table1")), ColumnRef("isAJoke", Some("table1"))), Seq.empty))
+        ),
+        ("FROM", Left(""))
+      )
+
+      inOut.foreach { (in, expectation) =>
+        expectation match {
+          case Right(value) =>
+            preprocess(in).flatMap(booleanExprParser.apply).value shouldBe value
+          case Left(_) =>
+            val errorResult = preprocess(in).flatMap(booleanExprParser.apply)
+            println(errorResult.left.value)
+            errorResult.isLeft shouldBe true
+        }
+
+      }
+    }
+
     "aliasParser" in {
       val inOut = List(
         (

@@ -87,13 +87,13 @@ object Parsers {
 
   }
 
-  val literalParser : PartialParser[Literal] = Parser.partial {
+  val literalParser: PartialParser[Literal] = Parser.partial {
     case StrToken(s"'$str'") +: tail => ParserResult(StringLiteral(str), tail)
     case StrToken(str) +: tail if str.toIntOption.isDefined => ParserResult(IntLiteral(str.toInt), tail)
     case StrToken(str) +: tail if str.toBooleanOption.isDefined => ParserResult(BooleanLiteral(str.toBoolean), tail)
   }
 
-  val columnRefParser : PartialParser[ColumnRef] = Parser.partial {
+  val columnRefParser: PartialParser[ColumnRef] = Parser.partial {
     case StrToken(s"$tableRef.$column") +: tail =>
       ParserResult(ColumnRef(column, Some(tableRef)), tail)
     case StrToken(column) +: tail =>
@@ -101,7 +101,7 @@ object Parsers {
   }
 
   // TODO: support 'arg1 func arg2 ...' notation
-  val functionParser : FullParser[FunctionCall] = {
+  val functionParser: FullParser[FunctionCall] = {
     lazy val argParser = literalParser.orElse(columnRefParser)
 
     Parser.full {
@@ -116,20 +116,40 @@ object Parsers {
   lazy val queryParser: FullParser[Query] = Parser.full {
     case SELECT +: tail =>
       for {
+        // select list of columns/references
         selectRefs <- parseSeq[SelectRef](
           columnRefParser.full("columnRef").orElse(aliasParser),
           FROM
         )(tail)
+
+        // from section
         from <- tableAliasParser.orElse(Parser.full {
           case (s: StrToken) +: tail => Right(ParserResult(s, tail))
           case head +: tail => Left(s"Cannot parse from at $head, rest: ${tail.mkString(" ")}")
         })(selectRefs.tail)
+
+        //
       } yield ParserResult(Query(selectRefs.result, from.result), from.tail)
     case head +: tail => Left(s"Cannot parse query at $head, rest: ${tail.mkString(" ")}")
   }
   
   val expressionParser: FullParser[Expr] = {
     literalParser.full("literal").orElse(functionParser).orElse(queryParser).asInstanceOf[FullParser[Expr]]
+  }
+
+  val booleanExprParser: FullParser[BooleanExpr] = {
+    val exprOrColumnParser = expressionParser.orElse(columnRefParser.full("columnRef"))
+
+    exprOrColumnParser.flatMap {
+      case ParserResult(exprOrColumn, (operator: CondOperator) +: tail) =>
+        exprOrColumnParser(tail).map { exprResult =>
+          exprResult.copy(result = BooleanExprImpl(operator, exprOrColumn, exprResult.result))
+        }
+      case ParserResult(result, head +: tail) =>
+        Left(s"Cannot parse boolean expr at $head, rest: ${tail.mkString(" ")}")
+      case ParserResult(result, _) =>
+        Left(s"Cannot parse boolean expr")
+    }
   }
 
   val aliasParser: FullParser[Alias] =
@@ -142,6 +162,7 @@ object Parsers {
 
   val tableAliasParser: FullParser[TableAlias] =
     queryParser.orElse(expressionParser).flatMap {
+
       case ParserResult(e, AS +: StrToken(alias) +: tail) => Right(ParserResult(TableAlias(e, alias), tail))
       case ParserResult(_, tail) => Left(s"Cannot parse tableAlias at ${tail.mkString(" ")}")
     }

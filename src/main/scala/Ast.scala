@@ -66,9 +66,21 @@ object Ast {
 
   // ----------------------------
 
+  type BooleanExprOperand = Expr | ColumnRef
+
+  case class BasicBoolExpr(operator: CondOperator, a: BooleanExprOperand, b: BooleanExprOperand)
+
+  case class Between(base: BooleanExprOperand, a: BooleanExprOperand, b: BooleanExprOperand)
+
+  case class ComplicatedBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
+
+  type BoolExpr = BasicBoolExpr | Between | ComplicatedBoolExpr
+
   sealed trait BooleanExpr
 
-  final case class BooleanExprImpl(operator: CondOperator, a: Expr | ColumnRef, b: Expr) extends BooleanExpr
+  type BooleanExprRef = Expr | ColumnRef
+
+  final case class BooleanExprImpl(operator: CondOperator, a: BooleanExprRef, b: BooleanExprRef) extends BooleanExpr
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
