@@ -1,4 +1,4 @@
-import Ast.CondOperator.{Equals, Like}
+import Ast.CondOperator.{And, Equals, Like}
 import Ast.Symbols.*
 import Ast.{StrToken as S, *}
 import Parsers.*
@@ -124,8 +124,8 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
           Right(ParserResult(BasicBoolExpr(CondOperator.Like, ColumnRef("name", None), StringLiteral("%zhopa%")), Seq.empty))
         ),
         (
-          "table1.isAdmin OR table1.isAJoke",
-          Right(ParserResult(BasicBoolExpr(CondOperator.Or, ColumnRef("isAdmin", Some("table1")), ColumnRef("isAJoke", Some("table1"))), Seq.empty))
+          "table1.isAdmin >= table1.isAJoke",
+          Right(ParserResult(BasicBoolExpr(CondOperator.GtThan, ColumnRef("isAdmin", Some("table1")), ColumnRef("isAJoke", Some("table1"))), Seq.empty))
         ),
         ("FROM", Left(""))
       )
@@ -231,17 +231,25 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
     "queryParser" in {
       val inOut = List(
         (
-          "select name from table WHERE zhopa > 10 OR table.isTrue OR false",
+          "select name from table WHERE zhopa > 10 OR table.isTrue OR false AND table.zhepa = 0",
           Right(ParserResult(Query(
             List(ColumnRef("name", None)),
             S("table"),
             Some(ComplicatedBoolExpr(
               CondOperator.Or,
               BasicBoolExpr(CondOperator.Gt, ColumnRef("zhopa", None), IntLiteral(10)),
-              BasicBoolExpr(
+              ComplicatedBoolExpr(
                 CondOperator.Or,
                 ColumnRef("isTrue", Some("table")),
-                BooleanLiteral(false)
+                ComplicatedBoolExpr(
+                  CondOperator.And,
+                  BooleanLiteral(false),
+                  BasicBoolExpr(
+                    CondOperator.Equals,
+                    ColumnRef("zhepa", Some("table")),
+                    IntLiteral(0)
+                  )
+                )
               )
             ))
           ), Seq.empty))

@@ -62,16 +62,18 @@ object Ast {
   // TODO: left part might not be only column ref
   final case class FunctionCall(func: String, args: Seq[Literal | ColumnRef]) extends Expr
 
+  // TODO: joins
+  // TODO: skip/take
   final case class Query(select: Seq[SelectRef], from: StrToken | TableAlias, where: Option[BoolExpr])
 
   // ----------------------------
 
   type BooleanExprOperand = Expr | ColumnRef
-  
+
   case class BasicBoolExpr(operator: CondOperator, a: BooleanExprOperand, b: BooleanExprOperand)
-  
+
   case class Between(base: BooleanExprOperand, a: BooleanExprOperand, b: BooleanExprOperand)
-  
+
   // WHERE table1.name LIKE '%zhopa%' AND (table1.name LIKE '%zhopa%' OR table1.a BETWEEN count(table1.b) AND 100)
   case class ComplicatedBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
 

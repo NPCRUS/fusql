@@ -156,7 +156,7 @@ object Parsers {
 
   val basicBoolExprParser: FullParser[BasicBoolExpr] =
     booleanExprOperandParser.flatMap {
-      case ParserResult(operandAResult, (operator: CondOperator) +: tail) =>
+      case ParserResult(operandAResult, (operator: CondOperator) +: tail) if !operator.isInstanceOf[AndOr] =>
         booleanExprOperandParser(tail).map { operandBResult =>
           operandBResult.copy(result = BasicBoolExpr(operator, operandAResult, operandBResult.result))
         }
@@ -189,8 +189,8 @@ object Parsers {
   lazy val boolExprParser: FullParser[BoolExpr] = {
     val parser = betweenParser
       .orElse(basicBoolExprParser)
-      .orElse(columnRefParser.full("columnRef"))
       .orElse(booleanLiteralParser.full("booleanLiteral"))
+      .orElse(columnRefParser.full("columnRef"))
 
     parser.flatMap {
       case ParserResult(operandA, CondOperator.And +: tail) =>
