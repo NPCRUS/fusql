@@ -1,3 +1,4 @@
+import Ast.CondOperator.{Equals, Like}
 import Ast.Symbols.*
 import Ast.{StrToken as S, *}
 import Parsers.*
@@ -40,7 +41,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
-        preprocess(in).flatMap(parseSeq(literalParser.full(""), FROM).apply) shouldBe expectation
+        preprocess(in).flatMap(parseSeq(literalParser.full(""), From).apply) shouldBe expectation
       }
     }
 
@@ -48,7 +49,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       val inOut = List(
         ("name", Some(ParserResult(ColumnRef("name", None), Seq.empty))),
         ("t.name", Some(ParserResult(ColumnRef("name", Some("t")), Seq.empty))),
-        ("t.name from", Some(ParserResult(ColumnRef("name",  Some("t")), Seq(Symbols.FROM)))),
+        ("t.name from", Some(ParserResult(ColumnRef("name",  Some("t")), Seq(Symbols.From)))),
       )
 
 
@@ -112,19 +113,19 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       }
     }
 
-    "booleanExprParser" in {
+    "basicBooExprParser" in {
       val inOut = List(
         (
           "1 = 1",
-          Right(ParserResult(BooleanExprImpl(CondOperator.Equals, IntLiteral(1), IntLiteral(1)), Seq.empty))
+          Right(ParserResult(BasicBoolExpr(CondOperator.Equals, IntLiteral(1), IntLiteral(1)), Seq.empty))
         ),
         (
           "name like '%zhopa%'",
-          Right(ParserResult(BooleanExprImpl(CondOperator.Like, ColumnRef("name", None), StringLiteral("%zhopa%")), Seq.empty))
+          Right(ParserResult(BasicBoolExpr(CondOperator.Like, ColumnRef("name", None), StringLiteral("%zhopa%")), Seq.empty))
         ),
         (
           "table1.isAdmin OR table1.isAJoke",
-          Right(ParserResult(BooleanExprImpl(CondOperator.Or, ColumnRef("isAdmin", Some("table1")), ColumnRef("isAJoke", Some("table1"))), Seq.empty))
+          Right(ParserResult(BasicBoolExpr(CondOperator.Or, ColumnRef("isAdmin", Some("table1")), ColumnRef("isAJoke", Some("table1"))), Seq.empty))
         ),
         ("FROM", Left(""))
       )
@@ -132,9 +133,61 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       inOut.foreach { (in, expectation) =>
         expectation match {
           case Right(value) =>
-            preprocess(in).flatMap(booleanExprParser.apply).value shouldBe value
+            preprocess(in).flatMap(basicBoolExprParser.apply).value shouldBe value
           case Left(_) =>
-            val errorResult = preprocess(in).flatMap(booleanExprParser.apply)
+            val errorResult = preprocess(in).flatMap(basicBoolExprParser.apply)
+            println(errorResult.left.value)
+            errorResult.isLeft shouldBe true
+        }
+
+      }
+    }
+
+    "betweenParser" in {
+      val inOut = List(
+        (
+          "table1.a BETWEEN count(table1.b) AND 100",
+          Right(ParserResult(Between(ColumnRef("a", Some("table1")), FunctionCall("count", Seq(ColumnRef("b", Some("table1")))), IntLiteral(100)), Seq.empty))
+        ),
+        ("FROM", Left(""))
+      )
+
+      inOut.foreach { (in, expectation) =>
+        expectation match {
+          case Right(value) =>
+            preprocess(in).flatMap(betweenParser.apply).value shouldBe value
+          case Left(_) =>
+            val errorResult = preprocess(in).flatMap(betweenParser.apply)
+            println(errorResult.left.value)
+            errorResult.isLeft shouldBe true
+        }
+
+      }
+    }
+
+    "complicatedBooleanExprParser" in {
+      val inOut = List(
+        (
+          "name LIKE '%zhopa%' AND table1.a BETWEEN count(table1.b) AND 100 OR t.count = 0",
+          Right(ParserResult(ComplicatedBoolExpr(
+            CondOperator.And,
+            BasicBoolExpr(CondOperator.Like, ColumnRef("name", None), StringLiteral("%zhopa%")),
+            ComplicatedBoolExpr(
+              CondOperator.Or,
+              Between(ColumnRef("a", Some("table1")), FunctionCall("count", Seq(ColumnRef("b", Some("table1")))), IntLiteral(100)),
+              BasicBoolExpr(Equals, ColumnRef("count", Some("t")), IntLiteral(0))
+            )
+          ), Seq.empty))
+        ),
+        ("FROM", Left(""))
+      )
+
+      inOut.foreach { (in, expectation) =>
+        expectation match {
+          case Right(value) =>
+            preprocess(in).flatMap(boolExprParser.apply).value shouldBe value
+          case Left(_) =>
+            val errorResult = preprocess(in).flatMap(boolExprParser.apply)
             println(errorResult.left.value)
             errorResult.isLeft shouldBe true
         }
@@ -178,8 +231,20 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
     "queryParser" in {
       val inOut = List(
         (
-          "select name from table",
-          Right(ParserResult(Query(List(ColumnRef("name", None)), S("table")), Seq.empty))
+          "select name from table WHERE zhopa > 10 OR table.isTrue OR false",
+          Right(ParserResult(Query(
+            List(ColumnRef("name", None)),
+            S("table"),
+            Some(ComplicatedBoolExpr(
+              CondOperator.Or,
+              BasicBoolExpr(CondOperator.Gt, ColumnRef("zhopa", None), IntLiteral(10)),
+              BasicBoolExpr(
+                CondOperator.Or,
+                ColumnRef("isTrue", Some("table")),
+                BooleanLiteral(false)
+              )
+            ))
+          ), Seq.empty))
         ),
         (
           "true",
