@@ -28,6 +28,7 @@ object Ast {
   enum CondOperator(token: String) extends Token {
 
     def eq(str: String): Boolean = this.token == str.toLowerCase
+    def print: String = this.token
 
     case And extends CondOperator("and") with AndOr
     case Or extends CondOperator("or") with AndOr
@@ -59,7 +60,6 @@ object Ast {
 
 
   // -------- EXPRESSIONS -----------
-  // TODO: left part might not be only column ref
   final case class FunctionCall(func: String, args: Seq[Literal | ColumnRef]) extends Expr
 
   // TODO: joins

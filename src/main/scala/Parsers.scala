@@ -191,7 +191,7 @@ object Parsers {
       .orElse(basicBoolExprParser)
       .orElse(booleanLiteralParser.full("booleanLiteral"))
       .orElse(columnRefParser.full("columnRef"))
-
+    
     parser.flatMap {
       case ParserResult(operandA, CondOperator.And +: tail) =>
         boolExprParser(tail).map { result =>
