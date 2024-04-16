@@ -1,6 +1,6 @@
 import org.scalatest.EitherValues
 import org.scalatest.wordspec.AnyWordSpecLike
-import Printer.{queryPrinter, *}
+import Printer.queryPrinter
 import org.scalatest.matchers.should.Matchers
 
 class PrinterSpec extends AnyWordSpecLike with Matchers with EitherValues {

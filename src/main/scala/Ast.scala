@@ -73,8 +73,7 @@ object Ast {
   case class BasicBoolExpr(operator: CondOperator, a: BooleanExprOperand, b: BooleanExprOperand)
 
   case class Between(base: BooleanExprOperand, a: BooleanExprOperand, b: BooleanExprOperand)
-
-  // WHERE table1.name LIKE '%zhopa%' AND (table1.name LIKE '%zhopa%' OR table1.a BETWEEN count(table1.b) AND 100)
+  
   case class ComplicatedBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
 
   type BoolExpr = BooleanLiteral | ColumnRef | BasicBoolExpr | Between | ComplicatedBoolExpr

@@ -1,6 +1,6 @@
 import Ast.CondOperator.{And, Equals, Like}
 import Ast.Symbols.*
-import Ast.{StrToken as S, *}
+import Ast.{StrToken, StrToken as S, *}
 import Parsers.*
 import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
@@ -221,6 +221,39 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
             preprocess(in).flatMap(aliasParser.apply).value shouldBe value
           case Left(_) =>
             val errorResult = preprocess(in).flatMap(aliasParser.apply)
+            println(errorResult.left.value)
+            errorResult.isLeft shouldBe true
+        }
+
+      }
+    }
+
+    "tableAliasParser" in {
+      val inOut = List(
+        (
+          "users as u",
+          Right(ParserResult(TableAlias(S("users"), "u"), Seq.empty))
+        ),
+        (
+          "count(1) as t1",
+          Right(ParserResult(TableAlias(FunctionCall("count", Seq(IntLiteral(1))), "t1"), Seq.empty))
+        ),
+        (
+          "select name from t1 as t2 as t3",
+          Right(ParserResult(TableAlias(Query(Seq(ColumnRef("name", None)), TableAlias(StrToken("t1"), "t2"), None), "t3"), Seq.empty))
+        ),
+        (
+          "true",
+          Left("")
+        )
+      )
+
+      inOut.foreach { (in, expectation) =>
+        expectation match {
+          case Right(value) =>
+            preprocess(in).flatMap(tableAliasParser.apply).value shouldBe value
+          case Left(_) =>
+            val errorResult = preprocess(in).flatMap(tableAliasParser.apply)
             println(errorResult.left.value)
             errorResult.isLeft shouldBe true
         }

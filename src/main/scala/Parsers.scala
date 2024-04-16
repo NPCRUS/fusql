@@ -213,8 +213,11 @@ object Parsers {
         Left(s"Cannot parse alias at ${tail.mkString(" ")}")
     }
 
+  // TODO: SELECT u.password FROM users as u this case doesn't work
   val tableAliasParser: FullParser[TableAlias] =
-    queryParser.orElse(expressionParser).flatMap {
+    queryParser.orElse(expressionParser).orElse(Parser.partial {
+      case (e: StrToken) +: tail => ParserResult(e, tail)
+    }.full("strToken")).flatMap {
 
       case ParserResult(e, As +: StrToken(alias) +: tail) => Right(ParserResult(TableAlias(e, alias), tail))
       case ParserResult(_, tail) => Left(s"Cannot parse tableAlias at ${tail.mkString(" ")}")
