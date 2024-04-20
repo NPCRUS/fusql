@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 
 class ConfigSpec extends AnyWordSpecLike with EitherValues with Matchers {
 
-  "config" in {
+  "test forbidden keywords" in {
     val config = Config.empty
       .on("users") { table =>
         table
