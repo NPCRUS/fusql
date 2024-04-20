@@ -67,7 +67,7 @@ object Parsers {
       CondOperator.values.find(_.eq(str)) getOrElse
       StrToken(str)
   }
-  
+
   def parseSeq[T](f: FullParser[T], until: Token): Parser[ErrOr, Seq[T]] = {
     @tailrec
     def inner(rest: Seq[Token], acc: Seq[T]): Either[String, ParserResult[Seq[T]]] = {
@@ -146,7 +146,7 @@ object Parsers {
       } yield ParserResult(Query(selectRefs.result, from.result, where.map(_.result)), whereTail)
     case head +: tail => Left(s"Cannot parse query at $head, rest: ${tail.mkString(" ")}")
   }
-  
+
   val expressionParser: FullParser[Expr] = {
     literalParser.full("literal").orElse(functionParser).orElse(queryParser).asInstanceOf[FullParser[Expr]]
   }
@@ -191,7 +191,7 @@ object Parsers {
       .orElse(basicBoolExprParser)
       .orElse(booleanLiteralParser.full("booleanLiteral"))
       .orElse(columnRefParser.full("columnRef"))
-    
+
     parser.flatMap {
       case ParserResult(operandA, CondOperator.And +: tail) =>
         boolExprParser(tail).map { result =>
