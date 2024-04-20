@@ -67,25 +67,24 @@ object Applicator {
           case Alias(cr: ColumnRef, _) => acc.isForbidden(cr)
           case _ => None
     }.toLeft(acc)
-    
+
   def checkWhere(where: BoolExpr, acc: Acc): Either[String, Acc] = where match
     case cr: ColumnRef => acc.isForbidden(cr).toLeft(acc)
     case BasicBoolExpr(_, a, b) => checkBasicBoolExpr(a, acc).flatMap(_ => checkBasicBoolExpr(b, acc))
-    case Between(base, a, b) => 
+    case Between(base, a, b) =>
       for {
         _ <- checkBasicBoolExpr(base, acc)
         _ <- checkBasicBoolExpr(a, acc)
         _ <- checkBasicBoolExpr(b, acc)
       } yield acc
     case ComplicatedBoolExpr(_, a, b) => checkWhere(a, acc).flatMap(_ => checkWhere(b, acc))
-    case _ => Right(acc) // TODO: more boolExpr variants
-      
+
   def checkBasicBoolExpr(e: BooleanExprOperand, acc: Acc): Either[String, Acc] = e match
-    case cr: ColumnRef => 
+    case cr: ColumnRef =>
       acc.isForbidden(cr).toLeft(acc)
-    case expr: Expr => 
+    case expr: Expr =>
       checkExpr(expr, acc)
-      
+
   def checkExpr(e: Expr, acc: Acc): Either[String, Acc] = e match
     case FunctionCall(func, args) => args.foldLeft[Option[String]](None) {
       case (Some(err), _) => Some(err)
