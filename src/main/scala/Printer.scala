@@ -72,12 +72,14 @@ object Printer {
     case e: Query => e.print
     case e: StrToken => e.print
   }
+  
   given tableAliasPrinter: Printer[TableAlias] = v => s"${v.input.print} AS ${v.alias}"
 
   given strTokenTableAliasPrinter: Printer[StrToken | TableAlias] = {
     case e: StrToken => e.print
     case e: TableAlias => e.print
   }
+  
   given queryPrinter: Printer[Query] = (v: Query) => {
     lazy val selectRefPrinter: Printer[SelectRef] = {
       case e: ColumnRef => e.print

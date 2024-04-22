@@ -1,16 +1,17 @@
-import Parsers.{parse, queryParser}
+import Parsers.{columnRefParser, parse, queryParser}
 import Ast.*
 
-case class TableConfig(tableName: String, forbiddenColumns: Seq[String], contextFilter: Option[BoolExpr]) {
+case class TableConfig(tableName: String, forbiddenColumns: Seq[String], contextFilter: Option[BasicBoolExpr]) {
   def forbid(columnName: String): TableConfig = this.copy(forbiddenColumns = this.forbiddenColumns :+ columnName)
 
-  def filter(expr: BoolExpr): TableConfig = this.copy(contextFilter = Some(expr))
+  def filter(expr: BasicBoolExpr): TableConfig = this.copy(contextFilter = Some(expr))
 }
 
 object Config {
   def empty: Config = Config(Seq.empty)
 }
 
+// TODO: model seq as Map[String, TableConfig] here
 case class Config(seq: Seq[TableConfig]) {
   def on(tableName: String)(builder: TableConfig => TableConfig): Config =
     Config(
@@ -18,13 +19,14 @@ case class Config(seq: Seq[TableConfig]) {
     )
 }
 
-object Applicator {
-  def run(config: Config, input: String): Either[String, String] =
+object ConfigApplicator {
+  def run(config: Config, input: String): Either[String, Query] =
     parse(input).flatMap { query =>
-      check(config, query).map(_ => "")
+      check(config, query).map(_ => applyFilter(config, query))
     }
 
   case class Acc(config: Config, aliasMap: Map[String, String]) {
+
     def merge(merger: Map[String, String] => Map[String, String]): Acc =
       this.copy(aliasMap = merger(this.aliasMap))
 
@@ -42,6 +44,28 @@ object Applicator {
         config.seq.filter(c => aliasMap.values.toList.contains(c.tableName))
           .find(_.forbiddenColumns.contains(c.column))
           .map(tableConfig => s"Column ${c.column} is forbidden on table ${tableConfig.tableName}")
+
+    def containsFilteredColumn(columnRef: ColumnRef): Option[String] = columnRef match
+      case ColumnRef(column, Some(table)) =>
+        val tableFromMap = aliasMap.getOrElse(table, table)
+        config.seq.filter(_.tableName == tableFromMap).collectFirst {
+          case tc@TableConfig(_, _, Some(cf)) => cf
+        }.flatMap { contextFilter =>
+          Seq(contextFilter.a, contextFilter.b).collect {
+            case cr: ColumnRef => cr
+          }.find(_.column == column).map(c => s"Column $column is used for context filtering, remove")
+        }
+      case ColumnRef(column, None) =>
+        config.seq.collect {
+          case TableConfig(_, _, Some(contextFilter)) => contextFilter
+        }.find { expr =>
+          Seq(expr.b, expr.b).collect {
+            case cr: ColumnRef => cr
+          }.exists(_.column == column)
+        }.map(c => s"Column $column is used for context filtering, remove")
+
+    def checkForError(columnRef: ColumnRef): Option[String] =
+      isForbidden(columnRef).orElse(containsFilteredColumn(columnRef))
   }
 
   def check(config: Config, query: Query): Either[String, Acc] = {
@@ -57,7 +81,7 @@ object Applicator {
       _ <- query.where.map(checkWhere(_, acc)).getOrElse(Right(acc))
     } yield acc
   }
-  
+
   def checkColumns(columns: Seq[SelectRef], acc: Acc): Either[String, Acc] =
     columns.foldLeft[Option[String]](None) { (err, elem) =>
       err match
@@ -69,7 +93,7 @@ object Applicator {
     }.toLeft(acc)
 
   def checkWhere(where: BoolExpr, acc: Acc): Either[String, Acc] = where match
-    case cr: ColumnRef => acc.isForbidden(cr).toLeft(acc)
+    case cr: ColumnRef => acc.checkForError(cr).toLeft(acc)
     case BasicBoolExpr(_, a, b) => checkBasicBoolExpr(a, acc).flatMap(_ => checkBasicBoolExpr(b, acc))
     case Between(base, a, b) =>
       for {
@@ -78,18 +102,36 @@ object Applicator {
         _ <- checkBasicBoolExpr(b, acc)
       } yield acc
     case ComplicatedBoolExpr(_, a, b) => checkWhere(a, acc).flatMap(_ => checkWhere(b, acc))
+    case _ => Right(acc)
 
   def checkBasicBoolExpr(e: BooleanExprOperand, acc: Acc): Either[String, Acc] = e match
     case cr: ColumnRef =>
-      acc.isForbidden(cr).toLeft(acc)
+      acc.checkForError(cr).toLeft(acc)
     case expr: Expr =>
       checkExpr(expr, acc)
 
   def checkExpr(e: Expr, acc: Acc): Either[String, Acc] = e match
     case FunctionCall(func, args) => args.foldLeft[Option[String]](None) {
       case (Some(err), _) => Some(err)
-      case (None, cr: ColumnRef) => acc.isForbidden(cr)
+      case (None, cr: ColumnRef) => acc.checkForError(cr)
       case _ => None
     }.toLeft(acc)
     case _ => Right(acc)
+
+  def applyFilter(config: Config, query: Query): Query = {
+    query.from match
+      case TableAlias(q: Query, _) => applyFilter(config, query)
+      case TableAlias(StrToken(table), _) => applyContextFilter(config, table, query)
+      case StrToken(table) => applyContextFilter(config, table, query)
+      case _ => query
+  }
+  
+  def applyContextFilter(config: Config, table: String, query: Query): Query =
+    config.seq.find(_.tableName == table).collect {
+      case TableConfig(_, _, Some(contextFilter)) => contextFilter
+    }.map { contextFilter =>
+      query.where match
+        case Some(where) => query.copy(where = Some(ComplicatedBoolExpr(CondOperator.And, contextFilter, where)))
+        case None => query.copy(where = Some(contextFilter))
+    }.getOrElse(query)
 }
