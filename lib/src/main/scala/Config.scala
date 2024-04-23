@@ -95,7 +95,7 @@ object ConfigApplicator {
   def checkWhere(where: BoolExpr, acc: Acc): Either[String, Acc] = where match
     case cr: ColumnRef => acc.checkForError(cr).toLeft(acc)
     case BasicBoolExpr(_, a, b) => checkBasicBoolExpr(a, acc).flatMap(_ => checkBasicBoolExpr(b, acc))
-    case Between(base, a, b) =>
+    case BetweenExpr(base, a, b) =>
       for {
         _ <- checkBasicBoolExpr(base, acc)
         _ <- checkBasicBoolExpr(a, acc)

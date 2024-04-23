@@ -3,8 +3,6 @@ import Ast.Token
 case class ParserResult[+T](result: T, tail: Seq[Token])
 
 sealed trait Parser[M[_], T] {
-  import Parser._
-
   def apply(input: Seq[Token]): M[ParserResult[T]]
 }
 

@@ -49,20 +49,20 @@ object Printer {
   }
 
   given basicBooleanExprPrinter: Printer[BasicBoolExpr] = expr =>
-    s"${expr.a.print} ${expr.operator.print} ${expr.b.print}"
+    s"${expr.a.print} ${expr.operator.toString.toUpperCase} ${expr.b.print}"
 
-  given betweenPrinter: Printer[Between] = v => s"${v.base.print} BETWEEN ${v.a.print} AND ${v.b.print}"
+  given betweenPrinter: Printer[BetweenExpr] = v => s"${v.base.print} BETWEEN ${v.a.print} AND ${v.b.print}"
 
   given boolExprPrinter: Printer[BoolExpr] = {
     case e: BooleanLiteral => e.value.toString
     case e: ColumnRef => e.print
     case e: BasicBoolExpr => e.print
-    case e: Between => e.print
+    case e: BetweenExpr => e.print
     case e: ComplicatedBoolExpr => e.print
   }
 
   given andOrPrinter: Printer[AndOr] = {
-    case e: CondOperator => e.print
+    case e: CondOperator => e.toString.toUpperCase
   }
 
   given complicatedBoolExprPrinter: Printer[ComplicatedBoolExpr] = v => s"${v.a.print} ${v.operator.print} ${v.b.print}"

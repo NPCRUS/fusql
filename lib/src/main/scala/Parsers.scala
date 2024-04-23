@@ -1,72 +1,12 @@
 import scala.annotation.tailrec
 import Ast._
 import Ast.Symbols._
+import Ast.CondOperator._
 import Parser._
 
 // TODO: better errors
 object Parsers {
-
-  case class ParserResultOld[+T](result: T, tail: Seq[Token])
-
-  type PartialParserOld[T] = PartialFunction[Seq[Token], ParserResultOld[T]]
-
-  extension [T](p: PartialParserOld[T]) {
-    def lift: ParserOld[T] = p andThen Right.apply
-  }
-
-  type ParserOld[T] = PartialFunction[Seq[Token], Either[String, ParserResultOld[T]]]
-
-  extension [T](p: ParserOld[T]) {
-    def flatMap[B](f: PartialFunction[ParserResultOld[T], Either[String, ParserResultOld[B]]]): ParserOld[B] =
-      val t: PartialFunction[Either[String, ParserResultOld[T]], Either[String, ParserResultOld[B]]] = {
-        case Right(value) if f.isDefinedAt(value) =>
-          f(value)
-        case Left(value) =>
-          Left(value)
-      }
-
-      p andThen t
-  }
-
-  private val forbiddenSymbols = Set("insert", "update" , "delete", "truncate", "drop")
-
   private val functions: Set[String] = Set("count", "concat")
-
-  def splitTokens(s: String): Seq[String] = s.split(" ")
-
-  def splitAndEnrich(s: Seq[String], token: Token): Seq[String] = {
-    @tailrec
-    def addComa(acc: Seq[String], rest: Seq[String]): Seq[String] = rest match
-      case Seq() => acc
-      case Seq(last) => acc :+ last
-      case head +: tail =>
-        addComa(acc.concat(Seq(head, ",")), tail)
-
-    s.flatMap(str => str.split(",").toSeq match
-      case Seq(value) if str.contains(',') => Seq(value, ",")
-      case seq if str.contains(',') =>
-        addComa(Seq.empty, seq)
-      case rest => rest
-    )
-  }
-
-  def filter(tokens: Seq[String]): Either[String, Seq[String]] = forbiddenSymbols.filter(tokens.contains).toList match
-    case Nil => Right(tokens)
-    case some => Left(s"Bumped into some forbidden keywords: ${some.mkString(",")}")
-
-  def enrichWithToken(token: Symbols)(input: Token): Seq[Token] = input match {
-    case StrToken(v) if v.contains(token.repr) =>
-      v.split(token.repr.toCharArray.apply(0)).toSeq match
-        case head +: Seq() => Seq(StrToken(head), token)
-        case seq => seq.flatMap(e => Seq(StrToken(e), token)).dropRight(1)
-    case rest => Seq(rest)
-  }
-
-  def parseToTokens(tokens: Seq[String]): Seq[Token] = tokens.map { str =>
-    Symbols.values.find(_.eq(str)) orElse
-      CondOperator.values.find(_.eq(str)) getOrElse
-      StrToken(str)
-  }
 
   def parseSeq[T](f: FullParser[T], until: Token): Parser[ErrOr, Seq[T]] = {
     @tailrec
@@ -167,12 +107,12 @@ object Parsers {
     }
 
   // TODO: repetitive left returning
-  val betweenParser: FullParser[Between] = booleanExprOperandParser.flatMap {
-    case ParserResult(base, CondOperator.Between +: tail) =>
+  val betweenParser: FullParser[BetweenExpr] = booleanExprOperandParser.flatMap {
+    case ParserResult(base, Between +: tail) =>
       booleanExprOperandParser(tail).flatMap {
-        case ParserResult(operand1, CondOperator.And +: tail) =>
+        case ParserResult(operand1, And +: tail) =>
           booleanExprOperandParser(tail).map { result =>
-            result.copy(result = Between(base, operand1, result.result))
+            result.copy(result = BetweenExpr(base, operand1, result.result))
           }
         case ParserResult(result, head +: tail) =>
           Left(s"Cannot parse between expr at $head, rest: ${tail.mkString(" ")}")
@@ -193,13 +133,13 @@ object Parsers {
       .orElse(columnRefParser.full("columnRef"))
 
     parser.flatMap {
-      case ParserResult(operandA, CondOperator.And +: tail) =>
+      case ParserResult(operandA, And +: tail) =>
         boolExprParser(tail).map { result =>
-          result.copy(result = ComplicatedBoolExpr(CondOperator.And, operandA, result.result))
+          result.copy(result = ComplicatedBoolExpr(And, operandA, result.result))
         }
-      case ParserResult(operandA, CondOperator.Or +: tail) =>
+      case ParserResult(operandA, Or +: tail) =>
         boolExprParser(tail).map { result =>
-          result.copy(result = ComplicatedBoolExpr(CondOperator.Or, operandA, result.result))
+          result.copy(result = ComplicatedBoolExpr(Or, operandA, result.result))
         }
       case r@ParserResult(result, tail) => Right(r)
     }
@@ -223,25 +163,8 @@ object Parsers {
       case ParserResult(_, tail) => Left(s"Cannot parse tableAlias at ${tail.mkString(" ")}")
     }
 
-  def preprocess(s: String): Either[String, Seq[Token]] =
-    filter(splitTokens(s))
-      .map(parseToTokens)
-      .map { seq =>
-        seq
-          .flatMap(enrichWithToken(Coma))
-          .flatMap(enrichWithToken(BlockOpen))
-          .flatMap(enrichWithToken(BlockClose))
-      }
-
   def parse(s: String): Either[String, Query] =
-    preprocess(s)
+    Preprocessor(s)
       .flatMap(queryParser.apply)
       .map(_.result)
 }
-
-
-/*
-
-  SELECT * FROM table WHERE 1=1 TAKE 10 SKIP 10
-
- */

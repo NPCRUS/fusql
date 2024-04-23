@@ -1,6 +1,8 @@
 object Ast {
   
-  sealed trait Token
+  sealed trait Token {
+    def repr: String
+  }
 
   enum Symbols(token: String) extends Token {
     case Select extends Symbols("select")
@@ -20,16 +22,8 @@ object Ast {
 
   sealed trait AndOr
 
-  object CondOperator {
-    def findOperator(str: String): Option[CondOperator] =
-      CondOperator.values.find(_.toString == str.toLowerCase)
-  }
-
   enum CondOperator(token: String) extends Token {
-
-    def eq(str: String): Boolean = this.token == str.toLowerCase
-    def print: String = this.token
-
+    
     case And extends CondOperator("and") with AndOr
     case Or extends CondOperator("or") with AndOr
     case Equals extends CondOperator("=")
@@ -42,9 +36,15 @@ object Ast {
     case Like extends CondOperator("like")
     case In extends CondOperator("in")
     case Is extends CondOperator("is")
+
+    def eq(str: String): Boolean = this.token == str.toLowerCase
+    
+    def repr: String = token
   }
 
-  final case class StrToken(v: String) extends Token
+  final case class StrToken(v: String) extends Token {
+    override def repr: String = v
+  }
 
   sealed trait Expr
 
@@ -72,11 +72,11 @@ object Ast {
 
   case class BasicBoolExpr(operator: CondOperator, a: BooleanExprOperand, b: BooleanExprOperand)
 
-  case class Between(base: BooleanExprOperand, a: BooleanExprOperand, b: BooleanExprOperand)
+  case class BetweenExpr(base: BooleanExprOperand, a: BooleanExprOperand, b: BooleanExprOperand)
   
   case class ComplicatedBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
 
-  type BoolExpr = BooleanLiteral | ColumnRef | BasicBoolExpr | Between | ComplicatedBoolExpr
+  type BoolExpr = BooleanLiteral | ColumnRef | BasicBoolExpr | BetweenExpr | ComplicatedBoolExpr
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
