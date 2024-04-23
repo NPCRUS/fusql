@@ -27,15 +27,21 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
     "parseSeq" in {
       val inOut = List(
-        ("'321413'", Right(ParserResult(List(StringLiteral("321413")), Seq.empty))),
+        ("'321413', true", Right(ParserResult(List(StringLiteral("321413"), BooleanLiteral(true)), Seq.empty))),
+        ("true,,", Left(""))
       )
 
       inOut.foreach { (in, expectation) =>
-        Preprocessor(in).flatMap(parseSeq(literalParser.full(""), From).apply) shouldBe expectation
+        val result = Preprocessor(in).flatMap(parseSeq(literalParser.full(""), From).apply)
+        expectation match
+          case Left(value) =>
+            result.isLeft shouldBe true
+          case Right(value) =>
+            result.value shouldBe value
       }
     }
 
-    "columnParser" in {
+    "columnRefParser" in {
       val inOut = List(
         ("name", Some(ParserResult(ColumnRef("name", None), Seq.empty))),
         ("t.name", Some(ParserResult(ColumnRef("name", Some("t")), Seq.empty))),
@@ -63,15 +69,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(functionParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(functionParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(functionParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -91,15 +95,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(expressionParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(expressionParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(expressionParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -121,15 +123,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(basicBoolExprParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(basicBoolExprParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(basicBoolExprParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -143,15 +143,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(betweenParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(betweenParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(betweenParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -173,15 +171,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(boolExprParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(boolExprParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(boolExprParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -206,15 +202,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(aliasParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(aliasParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(aliasParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -239,15 +233,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(tableAliasParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(tableAliasParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(tableAliasParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
 
@@ -284,15 +276,13 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
+        val result = Preprocessor(in).flatMap(queryParser.apply)
         expectation match {
           case Right(value) =>
-            Preprocessor(in).flatMap(queryParser.apply).value shouldBe value
+            result.value shouldBe value
           case Left(_) =>
-            val errorResult = Preprocessor(in).flatMap(queryParser.apply)
-            println(errorResult.left.value)
-            errorResult.isLeft shouldBe true
+            result.isLeft shouldBe true
         }
-
       }
     }
   }
