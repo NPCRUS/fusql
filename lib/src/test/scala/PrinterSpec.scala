@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 
 class PrinterSpec extends AnyWordSpecLike with Matchers with EitherValues {
   "printer" in {
-    val input = "select name from table WHERE zhopa > 10 OR table.isTrue OR false AND table.zhepa = 0"
+    val input = "select name from table WHERE zhopa > 10 OR table.isTrue AND table.zhepa = 0"
     val parsed = Parsers.parse(input).value
     val printed1 = queryPrinter.print(parsed)
     val parsed2 = Parsers.parse(printed1).value

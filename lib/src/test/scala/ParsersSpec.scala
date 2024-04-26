@@ -13,15 +13,20 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
   "Parsers" should {
     "literal parser" in {
       val inOut = List(
-        ("'321413'", Some(ParserResult(StringLiteral("321413"), Seq.empty))),
-        ("321413", Some(ParserResult(IntLiteral(321413), Seq.empty))),
-        ("true", Some(ParserResult(BooleanLiteral(true), Seq.empty))),
-        ("false zhopa", Some(ParserResult(BooleanLiteral(false), Seq(S("zhopa"))))),
-        ("FROM", None)
+        ("'321413'", Right(ParserResult(StringLiteral("321413"), Seq.empty))),
+        ("321413", Right(ParserResult(IntLiteral(321413), Seq.empty))),
+        ("true", Right(ParserResult(BooleanLiteral(true), Seq.empty))),
+        ("false zhopa", Right(ParserResult(BooleanLiteral(false), Seq(S("zhopa"))))),
+        ("FROM", Left(""))
       )
 
       inOut.foreach { (in, expectation) =>
-        Preprocessor(in).map(literalParser.apply).value shouldBe expectation
+        val result = Preprocessor(in).flatMap(literalParser.apply)
+        expectation match
+          case Left(value) =>
+            result.isLeft shouldBe true
+          case Right(value) =>
+            result.value shouldBe value
       }
     }
 
@@ -32,7 +37,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
       inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(parseSeq(literalParser.full(""), From).apply)
+        val result = Preprocessor(in).flatMap(parseSeq(literalParser, From).apply)
         expectation match
           case Left(value) =>
             result.isLeft shouldBe true
@@ -43,14 +48,20 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
     "columnRefParser" in {
       val inOut = List(
-        ("name", Some(ParserResult(ColumnRef("name", None), Seq.empty))),
-        ("t.name", Some(ParserResult(ColumnRef("name", Some("t")), Seq.empty))),
-        ("t.name from", Some(ParserResult(ColumnRef("name",  Some("t")), Seq(Symbols.From)))),
+        ("name", Right(ParserResult(ColumnRef("name", None), Seq.empty))),
+        ("t.name", Right(ParserResult(ColumnRef("name", Some("t")), Seq.empty))),
+        ("t.name from", Right(ParserResult(ColumnRef("name",  Some("t")), Seq(Symbols.From)))),
+        ("FROM", Left(""))
       )
 
 
       inOut.foreach { (in, expectation) =>
-        Preprocessor(in).map(columnRefParser.apply).value shouldBe expectation
+        val result = Preprocessor(in).flatMap(columnRefParser.apply)
+        expectation match
+          case Left(value) =>
+            result.isLeft shouldBe true
+          case Right(value) =>
+            result.value shouldBe value
       }
     }
 
@@ -89,6 +100,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
           "concat( 'zhopa' , t.name )",
           Right(ParserResult(FunctionCall("concat", Seq(StringLiteral("zhopa"), ColumnRef("name", Some("t")))), Seq.empty))
         ),
+        (s"(${QueryFixtures.simpleQuery._1})", QueryFixtures.simpleQuery._2),
         (
           "FROM", Left("")
         )
@@ -223,8 +235,8 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
           Right(ParserResult(TableAlias(FunctionCall("count", Seq(IntLiteral(1))), "t1"), Seq.empty))
         ),
         (
-          "select name from t1 as t2 as t3",
-          Right(ParserResult(TableAlias(Query(Seq(ColumnRef("name", None)), TableAlias(StrToken("t1"), "t2"), None), "t3"), Seq.empty))
+          "(select name from t1) as t3",
+          Right(ParserResult(TableAlias(Query(Seq(ColumnRef("name", None)), StrToken("t1"), None), "t3"), Seq.empty))
         ),
         (
           "true",
@@ -246,7 +258,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
     "queryParser" in {
       val inOut = List(
         (
-          "select name from table WHERE zhopa > 10 OR table.isTrue OR false AND table.zhepa = 0",
+          "select name from table WHERE zhopa > 10 OR table.isTrue AND table.zhepa = 0",
           Right(ParserResult(Query(
             List(ColumnRef("name", None)),
             S("table"),
@@ -254,16 +266,12 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
               Or,
               BasicBoolExpr(Gt, ColumnRef("zhopa", None), IntLiteral(10)),
               ComplicatedBoolExpr(
-                Or,
+                And,
                 ColumnRef("isTrue", Some("table")),
-                ComplicatedBoolExpr(
-                  And,
-                  BooleanLiteral(false),
-                  BasicBoolExpr(
-                    Equals,
-                    ColumnRef("zhepa", Some("table")),
-                    IntLiteral(0)
-                  )
+                BasicBoolExpr(
+                  Equals,
+                  ColumnRef("zhepa", Some("table")),
+                  IntLiteral(0)
                 )
               )
             ))

@@ -1,49 +1,62 @@
 import Ast.Token
+import Ast.Symbols._
 
+// TODO: https://com-lihaoyi.github.io/fastparse/#ExampleParsers
+// Omnipresent Li Haoyi made library for this as well
 case class ParserResult[+T](result: T, tail: Seq[Token])
-
-sealed trait Parser[M[_], T] {
-  def apply(input: Seq[Token]): M[ParserResult[T]]
-}
 
 type ErrOr[T] = Either[String, T]
 
+sealed trait Parser[T] {
+  import Parser.ParserImpl
+  
+  def apply(input: Seq[Token]): ErrOr[ParserResult[T]]
+  
+  def name: String
+  
+  def orElse[B](that: Parser[B]): Parser[T | B] =
+    ParserImpl(s"$name or ${that.name}") { seq =>
+      apply(seq) match
+        case Left(value) =>
+          that.apply(seq)
+        case Right(value) => Right(value)
+    }
+    
+  def orEnclosed: Parser[T] = this.enclosed.orElse(this)
+  
+  def enclosed: Parser[T] = ParserImpl(name) {
+    case BlockOpen +: tail => apply(tail).flatMap {
+      case ParserResult(result, BlockClose +: tail) => Right(ParserResult(result, tail))
+      case ParserResult(result, _) => Left(s"Didn't find ')' when trying to parse block of name")
+    }
+    case seq => Left(s"Didn't find '(' when trying to parse block of name")
+  }
+
+  def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): Parser[B] = ParserImpl(name) { seq =>
+    apply(seq).flatMap(f)
+  }
+
+  def map[B](f: T => B): Parser[B] = ParserImpl(name) { seq =>
+    apply(seq).map(v => v.copy(result = f(v.result)))
+  }
+}
+
 object Parser {
-
-  case class PartialParser[T](f: PartialFunction[Seq[Token], ParserResult[T]]) extends Parser[Option, T] {
-    override def apply(input: Seq[Token]): Option[ParserResult[T]] = f.lift(input)
-
-    def orElse[B](that: PartialParser[B]): PartialParser[T | B] = PartialParser(f orElse that.f)
-    
-    def full(parserName: String = "unknown"): FullParser[T] = FullParser(
-      f.lift andThen {
-        case None => Left(s"Cannot parse $parserName")
-        case Some(value) => Right(value)
-      }
-    )
-  }
-
-  case class FullParser[T](f: Seq[Token] => ErrOr[ParserResult[T]]) extends Parser[ErrOr, T] {
+  
+  case class ParserImpl[T](name: String)(f: Seq[Token] => ErrOr[ParserResult[T]]) extends Parser[T] {
     override def apply(input: Seq[Token]): ErrOr[ParserResult[T]] = f(input)
-    
-    def orElse[B](that: FullParser[B]): FullParser[T | B] =
-      FullParser { seq =>
-        f(seq) match
-          case Left(value) => that.f(seq)
-          case Right(value) => Right(value)
-      }
-
-    def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): FullParser[B] = FullParser { seq =>
-      this.f(seq).flatMap(f)
-    }
-    
-    def map[B](f: T => B): FullParser[B] = FullParser { seq =>
-      this.f(seq).map(v => v.copy(result = f(v.result)))
-    }
   }
+  
+  def apply[T](name: String)(f: Seq[Token] => ErrOr[ParserResult[T]]): Parser[T] = ParserImpl(name)(f)
 
-  def partial[T](f: PartialFunction[Seq[Token], ParserResult[T]]): PartialParser[T] = PartialParser(f)
-
-  def full[T](f: Seq[Token] => ErrOr[ParserResult[T]]): FullParser[T] = FullParser(f)
+  def apply[T](f: Seq[Token] => ErrOr[ParserResult[T]]): Parser[T] = ParserImpl("")(f)
+  
+  def partial[T](name: String)(f: PartialFunction[Seq[Token], ParserResult[T]]): Parser[T] = ParserImpl(name) { seq =>
+    f.lift(seq) match
+      case Some(value) => Right(value)
+      case None => Left(s"Cannot parse with $name")
+  }
+  
+  def partial[T](f: PartialFunction[Seq[Token], ParserResult[T]]): Parser[T] = partial("")(f)
 
 }

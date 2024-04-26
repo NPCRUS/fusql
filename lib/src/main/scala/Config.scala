@@ -102,7 +102,6 @@ object ConfigApplicator {
         _ <- checkBasicBoolExpr(b, acc)
       } yield acc
     case ComplicatedBoolExpr(_, a, b) => checkWhere(a, acc).flatMap(_ => checkWhere(b, acc))
-    case _ => Right(acc)
 
   def checkBasicBoolExpr(e: BooleanExprOperand, acc: Acc): Either[String, Acc] = e match
     case cr: ColumnRef =>

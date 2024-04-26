@@ -68,6 +68,8 @@ object Ast {
 
   // ----------------------------
 
+  // TODO: operand 'a' can be only column ref, there's no point of having left side as expression
+  // TODO: add support for IN, where
   type BooleanExprOperand = Expr | ColumnRef
 
   case class BasicBoolExpr(operator: CondOperator, a: BooleanExprOperand, b: BooleanExprOperand)
@@ -76,7 +78,7 @@ object Ast {
   
   case class ComplicatedBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
 
-  type BoolExpr = BooleanLiteral | ColumnRef | BasicBoolExpr | BetweenExpr | ComplicatedBoolExpr
+  type BoolExpr = ColumnRef | BasicBoolExpr | BetweenExpr | ComplicatedBoolExpr
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
@@ -84,7 +86,6 @@ object Ast {
 
   final case class TableAlias(input: Expr | Query | StrToken, alias: String)
 
-  // TODO: add Expr
   type SelectRef = ColumnRef | Alias
   
   // final case class Skip(v: Int) extends Expr
