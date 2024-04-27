@@ -117,7 +117,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       }
     }
 
-    "basicBooExprParser" in {
+    "basicBoolExprParser" in {
       val inOut = List(
         (
           "1 = 1",

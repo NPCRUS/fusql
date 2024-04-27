@@ -47,13 +47,12 @@ object Parsers {
   val functionParser: Parser[FunctionCall] = {
     lazy val argParser = literalParser.orElse(columnRefParser)
 
-    Parser("functionParser") {
+    Parser.partial("functionParser") {
       case StrToken(func) +: BlockOpen +: tail if functions.contains(func.toLowerCase) =>
-        parseSeq(argParser, BlockClose)(tail).map(v => v.copy(
-          result = FunctionCall(func, v.result)
-        ))
-      case head +: tail => Left(s"Cannot parse function at $head, rest: ${tail.mkString(" ")}")
-    }
+        ParserResult(func, tail)
+    }.andThen(
+      parseSeq(argParser, BlockClose)
+    ).map(FunctionCall.apply)
   }
 
   lazy val queryParser: Parser[Query] = Parser("queryParser") {
@@ -93,16 +92,14 @@ object Parsers {
     expressionParser.orElse(columnRefParser)
 
   val basicBoolExprParser: Parser[BasicBoolExpr] =
-    booleanExprOperandParser.flatMap {
-      case ParserResult(operandAResult, (operator: CondOperator) +: tail) if !operator.isInstanceOf[AndOr] =>
-        booleanExprOperandParser(tail).map { operandBResult =>
-          operandBResult.copy(result = BasicBoolExpr(operator, operandAResult, operandBResult.result))
-        }
-      case ParserResult(result, head +: tail) =>
-        Left(s"Cannot parse boolean expr at $head, rest: ${tail.mkString(" ")}")
-      case ParserResult(result, _) =>
-        Left(s"Cannot parse boolean expr")
-    }
+    booleanExprOperandParser.andThen(Parser.partial {
+      case (operator: CondOperator) +: tail if !operator.isInstanceOf[AndOr] =>
+        ParserResult(operator, tail)
+    }).andThen(booleanExprOperandParser)
+      .map {
+        case ((operandA, operator), operandB) =>
+          BasicBoolExpr(operator, operandA, operandB)
+      }
 
   // TODO: repetitive left returning
   val betweenParser: Parser[BetweenExpr] = booleanExprOperandParser.flatMap {
