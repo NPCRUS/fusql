@@ -5,8 +5,44 @@ import org.scalatest.wordspec.AnyWordSpecLike
 
 class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
-  private val specificParser = Parser.partial("specificParser") {
+  private val starParser = Parser.partial("starParser") {
     case StrToken("*") +: tail => ParserResult("good", tail)
+  }
+
+  private val comaParser = Parser.token(Symbols.Coma)
+
+  "token" in {
+    val inOut = List(
+      ("*", Left("")),
+      (",", Right(ParserResult(Symbols.Coma, Seq.empty))),
+    )
+
+    inOut.foreach { (in, expectation) =>
+      val result = Preprocessor(in).flatMap(comaParser.apply)
+      expectation match {
+        case Right(value) =>
+          result.value shouldBe value
+        case Left(_) =>
+          result.isLeft shouldBe true
+      }
+    }
+  }
+
+  "andThen" in {
+    val inOut = List(
+      ("*", Left("")),
+      ("*,", Right(ParserResult(("good", Symbols.Coma), Seq.empty))),
+    )
+
+    inOut.foreach { (in, expectation) =>
+      val result = Preprocessor(in).flatMap(starParser.andThen(comaParser).apply)
+      expectation match {
+        case Right(value) =>
+          result.value shouldBe value
+        case Left(_) =>
+          result.isLeft shouldBe true
+      }
+    }
   }
 
   "enclosed" in {
@@ -17,7 +53,7 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
     )
 
     inOut.foreach { (in, expectation) =>
-      val result = Preprocessor(in).flatMap(specificParser.enclosed.apply)
+      val result = Preprocessor(in).flatMap(starParser.enclosed.apply)
       expectation match {
         case Right(value) =>
           result.value shouldBe value
@@ -35,7 +71,7 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
     )
 
     inOut.foreach { (in, expectation) =>
-      val result = Preprocessor(in).flatMap(specificParser.orEnclosed.apply)
+      val result = Preprocessor(in).flatMap(starParser.orEnclosed.apply)
       expectation match {
         case Right(value) =>
           result.value shouldBe value

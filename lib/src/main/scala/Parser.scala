@@ -22,6 +22,14 @@ sealed trait Parser[T] {
         case Right(value) => Right(value)
     }
     
+  def andThen[B](that: Parser[B]): Parser[(T, B)] =
+    this.flatMap {
+      case ParserResult(t, rest) =>
+        that.apply(rest).map { result =>
+          result.copy(result = (t, result.result))
+        }
+    }
+    
   def orEnclosed: Parser[T] = this.enclosed.orElse(this)
   
   def enclosed: Parser[T] = ParserImpl(name) {
@@ -54,9 +62,13 @@ object Parser {
   def partial[T](name: String)(f: PartialFunction[Seq[Token], ParserResult[T]]): Parser[T] = ParserImpl(name) { seq =>
     f.lift(seq) match
       case Some(value) => Right(value)
-      case None => Left(s"Cannot parse with $name")
+      case None => Left(s"Cannot parse $name at ${seq.mkString(" ")}")
   }
   
   def partial[T](f: PartialFunction[Seq[Token], ParserResult[T]]): Parser[T] = partial("")(f)
+  
+  def token[T <: Token](t: Token): Parser[T] = partial(t.getClass.getSimpleName) {
+    case (found: Token) +: tail if t.repr == found.repr => ParserResult(t.asInstanceOf[T], tail)
+  }
 
 }
