@@ -9,7 +9,7 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
     case StrToken("*") +: tail => ParserResult("good", tail)
   }
 
-  private val comaParser = Parser.token(Symbols.Coma)
+  private val comaParser: Parser[Symbols.Coma.type] = Parser.token(Symbols.Coma)
 
   "token" in {
     val inOut = List(
@@ -36,6 +36,24 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
     inOut.foreach { (in, expectation) =>
       val result = Preprocessor(in).flatMap(starParser.andThen(comaParser).apply)
+      expectation match {
+        case Right(value) =>
+          result.value shouldBe value
+        case Left(_) =>
+          result.isLeft shouldBe true
+      }
+    }
+  }
+
+  "option" in {
+    val inOut = List(
+      (".", Right(ParserResult(None, Seq(StrToken("."))))),
+      ("*", Left("")),
+      ("*,", Right(ParserResult(Some(Symbols.Coma), Seq.empty)))
+    )
+
+    inOut.foreach { (in, expectation) =>
+      val result = Preprocessor(in).flatMap(Parser.option(starParser)(_)(_ => comaParser))
       expectation match {
         case Right(value) =>
           result.value shouldBe value

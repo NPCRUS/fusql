@@ -70,16 +70,10 @@ object Parsers {
           case head +: tail => Left(s"Cannot parse from at $head, rest: ${tail.mkString(" ")}")
         })(selectRefs.tail)
 
-        //
-        where <- from.tail match
-          case Where +: tail =>
-            boolExprParser(tail).map(Some.apply)
-          case _ => 
-            Right(None)
+        // where
+        where <- Parser.option(Parser.token(Where))(from.tail)(_ => boolExprParser)
 
-        whereTail = where.map(_.tail).getOrElse(from.tail)
-
-      } yield ParserResult(Query(selectRefs.result, from.result, where.map(_.result)), whereTail)
+      } yield ParserResult(Query(selectRefs.result, from.result, where.result), where.tail)
     case head +: tail => 
       Left(s"Cannot parse query at $head, rest: ${tail.mkString(" ")}")
   }
@@ -102,23 +96,16 @@ object Parsers {
       }
 
   // TODO: repetitive left returning
-  val betweenParser: Parser[BetweenExpr] = booleanExprOperandParser.flatMap {
-    case ParserResult(base, Between +: tail) =>
-      booleanExprOperandParser(tail).flatMap {
-        case ParserResult(operand1, And +: tail) =>
-          booleanExprOperandParser(tail).map { result =>
-            result.copy(result = BetweenExpr(base, operand1, result.result))
-          }
-        case ParserResult(result, head +: tail) =>
-          Left(s"Cannot parse between expr at $head, rest: ${tail.mkString(" ")}")
-        case ParserResult(result, _) =>
-          Left(s"Cannot parse between expr")
+  val betweenParser: Parser[BetweenExpr] =
+    booleanExprOperandParser
+      .andThen(Parser.token(Between))
+      .andThen(booleanExprOperandParser)
+      .andThen(Parser.token(And))
+      .andThen(booleanExprOperandParser)
+      .map {
+        case ((((base, _), a), _), b) =>
+          BetweenExpr(base, a, b)
       }
-    case ParserResult(result, head +: tail) =>
-      Left(s"Cannot parse between expr at $head, rest: ${tail.mkString(" ")}")
-    case ParserResult(result, _) =>
-      Left(s"Cannot parse between expr")
-  }
 
   // TODO: cover WHERE (....) OR/AND (....) ...
   lazy val boolExprParser: Parser[BoolExpr] = {
@@ -138,23 +125,20 @@ object Parsers {
       case r@ParserResult(result, tail) => Right(r)
     }
   }
+  
+  val aliasPartParser: Parser[String] = Parser.token(As).andThen(Parser.partial {
+    case  StrToken(str) +: tail => ParserResult(str, tail)
+  }).map(_._2)
 
   val aliasParser: Parser[Alias] =
-    expressionParser.orElse(columnRefParser).flatMap {
-      case ParserResult(e, As +: StrToken(alias) +: tail) =>
-        Right(ParserResult(Alias(e, alias), tail))
-      case ParserResult(_, tail) =>
-        Left(s"Cannot parse alias at ${tail.mkString(" ")}")
-    }
+    expressionParser.orElse(columnRefParser).andThen(aliasPartParser)
+      .map(Alias.apply)
 
   // TODO: SELECT u.password FROM users as u this case doesn't work
   val tableAliasParser: Parser[TableAlias] =
     queryParser.orElse(expressionParser).orElse(Parser.partial {
       case (e: StrToken) +: tail => ParserResult(e, tail)
-    }).flatMap {
-      case ParserResult(e, As +: StrToken(alias) +: tail) => Right(ParserResult(TableAlias(e, alias), tail))
-      case ParserResult(_, tail) => Left(s"Cannot parse tableAlias at ${tail.mkString(" ")}")
-    }
+    }).andThen(aliasPartParser).map(TableAlias.apply)
 
   def parse(s: String): Either[String, Query] =
     Preprocessor(s)

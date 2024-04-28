@@ -13,6 +13,14 @@ sealed trait Parser[T] {
   def apply(input: Seq[Token]): ErrOr[ParserResult[T]]
   
   def name: String
+
+  def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): Parser[B] = ParserImpl(name) { seq =>
+    apply(seq).flatMap(f)
+  }
+
+  def map[B](f: T => B): Parser[B] = ParserImpl(name) { seq =>
+    apply(seq).map(v => v.copy(result = f(v.result)))
+  }
   
   def orElse[B](that: Parser[B]): Parser[T | B] =
     ParserImpl(s"$name or ${that.name}") { seq =>
@@ -21,7 +29,7 @@ sealed trait Parser[T] {
           that.apply(seq)
         case Right(value) => Right(value)
     }
-    
+
   def andThen[B](that: Parser[B]): Parser[(T, B)] =
     this.flatMap {
       case ParserResult(t, rest) =>
@@ -30,6 +38,12 @@ sealed trait Parser[T] {
         }
     }
     
+  def option: Parser[Option[T]] = ParserImpl(name) { seq =>
+    this.apply(seq) match
+      case Left(value) => Right(ParserResult(None, seq))
+      case Right(value) => Right(value.copy(result = Some(value.result)))
+  }
+
   def orEnclosed: Parser[T] = this.enclosed.orElse(this)
   
   def enclosed: Parser[T] = ParserImpl(name) {
@@ -38,14 +52,6 @@ sealed trait Parser[T] {
       case ParserResult(result, _) => Left(s"Didn't find ')' when trying to parse block of name")
     }
     case seq => Left(s"Didn't find '(' when trying to parse block of name")
-  }
-
-  def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): Parser[B] = ParserImpl(name) { seq =>
-    apply(seq).flatMap(f)
-  }
-
-  def map[B](f: T => B): Parser[B] = ParserImpl(name) { seq =>
-    apply(seq).map(v => v.copy(result = f(v.result)))
   }
 }
 
@@ -66,7 +72,13 @@ object Parser {
   }
   
   def partial[T](f: PartialFunction[Seq[Token], ParserResult[T]]): Parser[T] = partial("")(f)
-  
+    
+  def option[T, B](optionalParser: Parser[T])(seq: Seq[Token])(f: T => Parser[B]): ErrOr[ParserResult[Option[B]]] = {
+    optionalParser.apply(seq) match
+      case Left(value) => Right(ParserResult(None, seq))
+      case Right(result) => f(result.result).apply(result.tail).map(finalResult => finalResult.copy(result = Some(finalResult.result)))
+  }
+
   def token[T <: Token](t: Token): Parser[T] = partial(t.getClass.getSimpleName) {
     case (found: Token) +: tail if t.repr == found.repr => ParserResult(t.asInstanceOf[T], tail)
   }
