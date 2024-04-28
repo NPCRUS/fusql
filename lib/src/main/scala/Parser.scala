@@ -44,7 +44,10 @@ sealed trait Parser[T] {
       case Right(value) => Right(value.copy(result = Some(value.result)))
   }
 
-  def orEnclosed: Parser[T] = this.enclosed.orElse(this)
+  def orEnclosed: Parser[T] = ParserImpl(name) {
+    case seq@(BlockOpen +: tail) => this.andThen(Parser.token(BlockClose)).apply(tail).map(res => res.copy(result = res.result._1))
+    case seq => this.apply(seq)
+  }
   
   def enclosed: Parser[T] = ParserImpl(name) {
     case BlockOpen +: tail => apply(tail).flatMap {

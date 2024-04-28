@@ -39,10 +39,6 @@ object Printer {
     case e: FunctionCall => e.print
   }
 
-  given aliasPrinter: Printer[Alias] = alias => {
-    s"${alias.input.print} as ${alias.alias}"
-  }
-
   given booleanExprOperandPrinter: Printer[BooleanExprOperand] = {
     case e: Expr => e.print
     case e: ColumnRef => e.print
@@ -57,15 +53,33 @@ object Printer {
     case e: ColumnRef => e.print
     case e: BasicBoolExpr => e.print
     case e: BetweenExpr => e.print
-    case e: ComplicatedBoolExpr => e.print
+    case e: ComplexBoolExpr => e.print
   }
 
   given andOrPrinter: Printer[AndOr] = {
     case e: CondOperator => e.toString.toUpperCase
   }
 
-  given complicatedBoolExprPrinter: Printer[ComplicatedBoolExpr] = v => s"${v.a.print} ${v.operator.print} ${v.b.print}"
+  given complexBoolExprPrinter: Printer[ComplexBoolExpr] = v => {
+    val a = v.a match
+      case e: ComplexBoolExpr => s"(${e.print})"
+      case other => other.print
 
+    val b = v.b match
+      case e: ComplexBoolExpr => s"(${e.print})"
+      case other => other.print
+
+    s"$a ${v.operator.print} $b"
+  }
+
+  given exprQueryColumnRefPrinter: Printer[Expr | Query | ColumnRef] = {
+    case e: Expr => e.print
+    case e: Query => e.print
+    case e: ColumnRef => e.print
+  }
+  
+  given aliasPrinter: Printer[Alias] = v => s"${v.input.print} AS ${v.alias}"
+  
   given exprQueryStrTokenPrinter: Printer[Expr | Query | StrToken] = {
     case e: Expr => e.print
     case e: Query => e.print

@@ -67,25 +67,25 @@ object Ast {
   final case class Query(select: Seq[SelectRef], from: StrToken | TableAlias, where: Option[BoolExpr])
 
   // ----------------------------
-
-  // TODO: operand 'a' can be only column ref, there's no point of having left side as expression
-  // TODO: add support for IN, where
+  
+  // TODO: add support for IN
   type BooleanExprOperand = Expr | ColumnRef
 
   case class BasicBoolExpr(operator: CondOperator, a: BooleanExprOperand, b: BooleanExprOperand)
 
   case class BetweenExpr(base: BooleanExprOperand, a: BooleanExprOperand, b: BooleanExprOperand)
   
-  case class ComplicatedBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
+  case class ComplexBoolExpr(operator: AndOr, a: BoolExpr, b: BoolExpr)
 
-  type BoolExpr = ColumnRef | BasicBoolExpr | BetweenExpr | ComplicatedBoolExpr
+  type BoolExpr = ColumnRef | BasicBoolExpr | BetweenExpr | ComplexBoolExpr
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
-  final case class Alias(input: Expr | ColumnRef, alias: String)
+  final case class Alias(input: Expr | Query | ColumnRef, alias: String)
 
   final case class TableAlias(input: Expr | Query | StrToken, alias: String)
 
+  // TODO: add * support
   type SelectRef = ColumnRef | Alias
   
   // final case class Skip(v: Int) extends Expr

@@ -8,6 +8,7 @@ import Parser._
 object Parsers {
   private val functions: Set[String] = Set("count", "concat")
 
+  // move to Parser.scala
   def parseSeq[T](f: Parser[T], until: Token): Parser[Seq[T]] = {
     @tailrec
     def inner(rest: Seq[Token], acc: Seq[T]): Either[String, ParserResult[Seq[T]]] = {
@@ -60,7 +61,7 @@ object Parsers {
       for {
         // select list of columns/references
         selectRefs <- parseSeq[SelectRef](
-          columnRefParser.orElse(aliasParser),
+          aliasParser.orElse(columnRefParser),
           From
         )(tail)
 
@@ -74,7 +75,7 @@ object Parsers {
         where <- Parser.option(Parser.token(Where))(from.tail)(_ => boolExprParser)
 
       } yield ParserResult(Query(selectRefs.result, from.result, where.result), where.tail)
-    case head +: tail => 
+    case head +: tail =>
       Left(s"Cannot parse query at $head, rest: ${tail.mkString(" ")}")
   }
 
@@ -95,7 +96,6 @@ object Parsers {
           BasicBoolExpr(operator, operandA, operandB)
       }
 
-  // TODO: repetitive left returning
   val betweenParser: Parser[BetweenExpr] =
     booleanExprOperandParser
       .andThen(Parser.token(Between))
@@ -107,34 +107,48 @@ object Parsers {
           BetweenExpr(base, a, b)
       }
 
-  // TODO: cover WHERE (....) OR/AND (....) ...
-  lazy val boolExprParser: Parser[BoolExpr] = {
+  // What an actual fuck? How does it even work?
+  // When parsing multiple nested bool expr for example ((1=1) and true), how can you decide that after second ( 
+  // you need to start parsing BasicBoolExpr instead of ComplexBoolExpr
+  lazy val boolExprParserIntermediate: Parser[BoolExpr] = {
     val parser = betweenParser
       .orElse(basicBoolExprParser)
       .orElse(columnRefParser)
 
     parser.flatMap {
       case ParserResult(operandA, And +: tail) =>
-        boolExprParser(tail).map { result =>
-          result.copy(result = ComplicatedBoolExpr(And, operandA, result.result))
+        boolExprParserIntermediate.orEnclosed(tail).map { result =>
+          result.copy(result = ComplexBoolExpr(And, operandA, result.result))
         }
       case ParserResult(operandA, Or +: tail) =>
-        boolExprParser(tail).map { result =>
-          result.copy(result = ComplicatedBoolExpr(Or, operandA, result.result))
+        boolExprParserIntermediate.orEnclosed(tail).map { result =>
+          result.copy(result = ComplexBoolExpr(Or, operandA, result.result))
         }
       case r@ParserResult(result, tail) => Right(r)
     }
   }
-  
+
+  lazy val boolExprParser: Parser[BoolExpr] =
+    boolExprParserIntermediate.orEnclosed.flatMap {
+      case ParserResult(operandA, And +: tail) =>
+        boolExprParser.orEnclosed(tail).map { result =>
+          result.copy(result = ComplexBoolExpr(And, operandA, result.result))
+        }
+      case ParserResult(operandA, Or +: tail) =>
+        boolExprParser.orEnclosed(tail).map { result =>
+          result.copy(result = ComplexBoolExpr(Or, operandA, result.result))
+        }
+      case r@ParserResult(result, tail) => Right(r)
+    }
+
   val aliasPartParser: Parser[String] = Parser.token(As).andThen(Parser.partial {
     case  StrToken(str) +: tail => ParserResult(str, tail)
   }).map(_._2)
 
   val aliasParser: Parser[Alias] =
-    expressionParser.orElse(columnRefParser).andThen(aliasPartParser)
+    queryParser.orElse(expressionParser).orElse(columnRefParser).andThen(aliasPartParser)
       .map(Alias.apply)
 
-  // TODO: SELECT u.password FROM users as u this case doesn't work
   val tableAliasParser: Parser[TableAlias] =
     queryParser.orElse(expressionParser).orElse(Parser.partial {
       case (e: StrToken) +: tail => ParserResult(e, tail)

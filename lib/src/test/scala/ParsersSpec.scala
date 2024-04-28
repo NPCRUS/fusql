@@ -5,6 +5,7 @@ import Parsers.*
 import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
+import QueryFixtures._
 
 import scala.util.Right
 
@@ -100,7 +101,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
           "concat( 'zhopa' , t.name )",
           Right(ParserResult(FunctionCall("concat", Seq(StringLiteral("zhopa"), ColumnRef("name", Some("t")))), Seq.empty))
         ),
-        (s"(${QueryFixtures.simpleQuery._1})", QueryFixtures.simpleQuery._2),
+        (s"(${simpleQuery._1})", simpleQuery._2),
         (
           "FROM", Left("")
         )
@@ -169,13 +170,29 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       val inOut = List(
         (
           "name LIKE '%zhopa%' AND table1.a BETWEEN count(table1.b) AND 100 OR t.count = 0",
-          Right(ParserResult(ComplicatedBoolExpr(
+          Right(ParserResult(ComplexBoolExpr(
             And,
             BasicBoolExpr(Like, ColumnRef("name", None), StringLiteral("%zhopa%")),
-            ComplicatedBoolExpr(
+            ComplexBoolExpr(
               Or,
               BetweenExpr(ColumnRef("a", Some("table1")), FunctionCall("count", Seq(ColumnRef("b", Some("table1")))), IntLiteral(100)),
               BasicBoolExpr(Equals, ColumnRef("count", Some("t")), IntLiteral(0))
+            )
+          ), Seq.empty))
+        ),
+        (
+          "(c1 = 1 and id < 0) or (c1 = 2 and id > 0)",
+          Right(ParserResult(ComplexBoolExpr(
+            Or,
+            ComplexBoolExpr(
+              And,
+              BasicBoolExpr(Equals, ColumnRef("c1", None), IntLiteral(1)),
+              BasicBoolExpr(Less, ColumnRef("id", None), IntLiteral(0))
+            ),
+            ComplexBoolExpr(
+              And,
+              BasicBoolExpr(Equals, ColumnRef("c1", None), IntLiteral(2)),
+              BasicBoolExpr(Gt, ColumnRef("id", None), IntLiteral(0))
             )
           ), Seq.empty))
         ),
@@ -204,8 +221,16 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
           Right(ParserResult(Alias(BooleanLiteral(true), "a"), Seq.empty))
         ),
         (
+          "1 as a",
+          Right(ParserResult(Alias(IntLiteral(1), "a"), Seq.empty))
+        ),
+        (
           "concat( 'zhopa' , t.name ) as b",
           Right(ParserResult(Alias(FunctionCall("concat", Seq(StringLiteral("zhopa"), ColumnRef("name", Some("t")))), "b"), Seq.empty))
+        ),
+        (
+          s"(${simpleQuery._1}) as a",
+          Right(ParserResult(Alias(simpleQuery._2.value.result, "a"), Seq.empty))
         ),
         (
           "true",
@@ -262,10 +287,10 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
           Right(ParserResult(Query(
             List(ColumnRef("name", None)),
             S("table"),
-            Some(ComplicatedBoolExpr(
+            Some(ComplexBoolExpr(
               Or,
               BasicBoolExpr(Gt, ColumnRef("zhopa", None), IntLiteral(10)),
-              ComplicatedBoolExpr(
+              ComplexBoolExpr(
                 And,
                 ColumnRef("isTrue", Some("table")),
                 BasicBoolExpr(
@@ -277,6 +302,8 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
             ))
           ), Seq.empty))
         ),
+        simpleQuery,
+        complicatedQuery,
         (
           "true",
           Left("")

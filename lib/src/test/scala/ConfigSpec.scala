@@ -65,7 +65,7 @@ class ConfigSpec extends AnyWordSpecLike with EitherValues with Matchers {
       val inOut = List(
         (
           "SELECT id FROM users WHERE name = 'zhopa'",
-          Query(Seq(ColumnRef("id", None)), StrToken("users"), Some(ComplicatedBoolExpr(
+          Query(Seq(ColumnRef("id", None)), StrToken("users"), Some(ComplexBoolExpr(
             And,
             BasicBoolExpr(Gt, ColumnRef("company_id", None), IntLiteral(120)),
             BasicBoolExpr(Equals, ColumnRef("name", None), StringLiteral("zhopa"))

@@ -101,7 +101,7 @@ object ConfigApplicator {
         _ <- checkBasicBoolExpr(a, acc)
         _ <- checkBasicBoolExpr(b, acc)
       } yield acc
-    case ComplicatedBoolExpr(_, a, b) => checkWhere(a, acc).flatMap(_ => checkWhere(b, acc))
+    case ComplexBoolExpr(_, a, b) => checkWhere(a, acc).flatMap(_ => checkWhere(b, acc))
 
   def checkBasicBoolExpr(e: BooleanExprOperand, acc: Acc): Either[String, Acc] = e match
     case cr: ColumnRef =>
@@ -130,7 +130,7 @@ object ConfigApplicator {
       case TableConfig(_, _, Some(contextFilter)) => contextFilter
     }.map { contextFilter =>
       query.where match
-        case Some(where) => query.copy(where = Some(ComplicatedBoolExpr(CondOperator.And, contextFilter, where)))
+        case Some(where) => query.copy(where = Some(ComplexBoolExpr(CondOperator.And, contextFilter, where)))
         case None => query.copy(where = Some(contextFilter))
     }.getOrElse(query)
 }
