@@ -5,6 +5,7 @@ import Ast.CondOperator.*
 object Preprocessor {
   private val forbiddenSymbols = Set("insert", "update" , "delete", "truncate", "drop")
 
+  // TODO: add \n support
   def apply(str: String): Either[String, Seq[Token]] =
     filter(splitTokensByEmptySpace(str))
       .map(splitBy(Seq(Coma, BlockOpen, BlockClose, LessThan, GtThan, NotEquals, Equals, Gt, Less))(_))

@@ -6,7 +6,7 @@ import Parser._
 
 // TODO: better errors
 object Parsers {
-  private val functions: Set[String] = Set("count", "concat")
+  private val functions: Set[String] = Set("count", "concat", "substring")
   
   val literalParser: Parser[Literal] = Parser.partial("literalParser") {
     case StrToken(s"'$str'") +: tail => ParserResult(StringLiteral(str), tail)

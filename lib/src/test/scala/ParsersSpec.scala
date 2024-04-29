@@ -135,6 +135,11 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
             )
           ), Seq.empty))
         ),
+        ("id = 1",
+          Right(ParserResult(
+            BasicBoolExpr(Equals, ColumnRef("id", None), IntLiteral(1))
+          , Seq.empty))
+        ),
         ("FROM", Left(""))
       )
 
