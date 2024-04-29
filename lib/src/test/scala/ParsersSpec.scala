@@ -6,6 +6,7 @@ import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
 import QueryFixtures._
+import Utils._
 
 import scala.util.Right
 
@@ -21,30 +22,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         ("FROM", Left(""))
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(literalParser.apply)
-        expectation match
-          case Left(value) =>
-            result.isLeft shouldBe true
-          case Right(value) =>
-            result.value shouldBe value
-      }
-    }
-
-    "parseSeq" in {
-      val inOut = List(
-        ("'321413', true", Right(ParserResult(List(StringLiteral("321413"), BooleanLiteral(true)), Seq.empty))),
-        ("true,,", Left(""))
-      )
-
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(parseSeq(literalParser, From).apply)
-        expectation match
-          case Left(value) =>
-            result.isLeft shouldBe true
-          case Right(value) =>
-            result.value shouldBe value
-      }
+      checkParser(literalParser)(inOut)
     }
 
     "columnRefParser" in {
@@ -56,14 +34,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
       )
 
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(columnRefParser.apply)
-        expectation match
-          case Left(value) =>
-            result.isLeft shouldBe true
-          case Right(value) =>
-            result.value shouldBe value
-      }
+      checkParser(columnRefParser)(inOut)
     }
 
     "functionParser" in {
@@ -80,19 +51,11 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         ("concat( 'zhopa' t.name )", Left(""))
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(functionParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(functionParser)(inOut)
     }
 
     "expressionParser" in {
-      val inOut = List(
+      val inOut: Seq[(String, ErrOr[ParserResult[Expr]])] = List(
         (
           "true",
           Right(ParserResult(BooleanLiteral(true), Seq.empty))
@@ -107,15 +70,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         )
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(expressionParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(expressionParser)(inOut)
     }
 
     "basicBoolExprParser" in {
@@ -135,15 +90,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         ("FROM", Left(""))
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(basicBoolExprParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(basicBoolExprParser)(inOut)
     }
 
     "betweenParser" in {
@@ -155,18 +102,10 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         ("FROM", Left(""))
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(betweenParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(betweenParser)(inOut)
     }
 
-    "complicatedBooleanExprParser" in {
+    "boolExprParser" in {
       val inOut = List(
         (
           "name LIKE '%zhopa%' AND table1.a BETWEEN count(table1.b) AND 100 OR t.count = 0",
@@ -199,15 +138,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         ("FROM", Left(""))
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(boolExprParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(boolExprParser)(inOut)
     }
 
     "aliasParser" in {
@@ -238,15 +169,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         )
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(aliasParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(aliasParser)(inOut)
     }
 
     "tableAliasParser" in {
@@ -269,15 +192,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         )
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(tableAliasParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(tableAliasParser)(inOut)
     }
 
     "queryParser" in {
@@ -310,15 +225,7 @@ class ParsersSpec extends AnyWordSpecLike with Matchers with EitherValues {
         )
       )
 
-      inOut.foreach { (in, expectation) =>
-        val result = Preprocessor(in).flatMap(queryParser.apply)
-        expectation match {
-          case Right(value) =>
-            result.value shouldBe value
-          case Left(_) =>
-            result.isLeft shouldBe true
-        }
-      }
+      checkParser(queryParser)(inOut)
     }
   }
 }

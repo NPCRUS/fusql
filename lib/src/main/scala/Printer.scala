@@ -37,6 +37,7 @@ object Printer {
   given expressionPrinter: Printer[Expr] = {
     case e: Literal => e.print
     case e: FunctionCall => e.print
+    case e: Query => e.print
   }
 
   given booleanExprOperandPrinter: Printer[BooleanExprOperand] = {
@@ -72,17 +73,15 @@ object Printer {
     s"$a ${v.operator.print} $b"
   }
 
-  given exprQueryColumnRefPrinter: Printer[Expr | Query | ColumnRef] = {
+  given exprColumnRefPrinter: Printer[Expr | ColumnRef] = {
     case e: Expr => e.print
-    case e: Query => e.print
     case e: ColumnRef => e.print
   }
   
-  given aliasPrinter: Printer[Alias] = v => s"${v.input.print} AS ${v.alias}"
+  given aliasPrinter: Printer[Alias] = v => s"${v.input.print(using exprColumnRefPrinter)} AS ${v.alias}"
   
-  given exprQueryStrTokenPrinter: Printer[Expr | Query | StrToken] = {
+  given exprQueryStrTokenPrinter: Printer[Expr | StrToken] = {
     case e: Expr => e.print
-    case e: Query => e.print
     case e: StrToken => e.print
   }
   

@@ -64,7 +64,7 @@ object Ast {
 
   // TODO: joins
   // TODO: skip/take
-  final case class Query(select: Seq[SelectRef], from: StrToken | TableAlias, where: Option[BoolExpr])
+  final case class Query(select: Seq[SelectRef], from: StrToken | TableAlias, where: Option[BoolExpr]) extends Expr
 
   // ----------------------------
   
@@ -81,9 +81,9 @@ object Ast {
 
   final case class ColumnRef(column: String, tableRef: Option[String])
 
-  final case class Alias(input: Expr | Query | ColumnRef, alias: String)
+  final case class Alias(input: Expr | ColumnRef, alias: String)
 
-  final case class TableAlias(input: Expr | Query | StrToken, alias: String)
+  final case class TableAlias(input: Expr | StrToken, alias: String)
 
   // TODO: add * support
   type SelectRef = ColumnRef | Alias

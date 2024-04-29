@@ -7,30 +7,7 @@ import Parser._
 // TODO: better errors
 object Parsers {
   private val functions: Set[String] = Set("count", "concat")
-
-  // move to Parser.scala
-  def parseSeq[T](f: Parser[T], until: Token): Parser[Seq[T]] = {
-    @tailrec
-    def inner(rest: Seq[Token], acc: Seq[T]): Either[String, ParserResult[Seq[T]]] = {
-      f.apply(rest) match
-        case Left(err) =>
-          Left(s"Cannot parse sequence: $err")
-        case Right(ParserResult(result, Seq())) =>
-          Right(ParserResult(acc :+ result, Seq()))
-        case Right(ParserResult(result, head +: tail)) if head == until =>
-          Right(ParserResult(acc :+ result, tail))
-        case Right(ParserResult(result, Coma +: tail)) =>
-          inner(tail, acc :+ result)
-        case Right(ParserResult(_, head +: tail)) =>
-          Left(s"Cannot parse sequence, bumped into ${head.toString}, rest: ${tail.mkString(" ")}")
-    }
-
-    Parser("parseSeq") { tokens =>
-      inner(tokens, Seq.empty)
-    }
-
-  }
-
+  
   val literalParser: Parser[Literal] = Parser.partial("literalParser") {
     case StrToken(s"'$str'") +: tail => ParserResult(StringLiteral(str), tail)
     case StrToken(str) +: tail if str.toIntOption.isDefined => ParserResult(IntLiteral(str.toInt), tail)
@@ -52,7 +29,7 @@ object Parsers {
       case StrToken(func) +: BlockOpen +: tail if functions.contains(func.toLowerCase) =>
         ParserResult(func, tail)
     }.andThen(
-      parseSeq(argParser, BlockClose)
+      Parser.seq(argParser, BlockClose)
     ).map(FunctionCall.apply)
   }
 
@@ -60,7 +37,7 @@ object Parsers {
     case Select +: tail =>
       for {
         // select list of columns/references
-        selectRefs <- parseSeq[SelectRef](
+        selectRefs <- Parser.seq[SelectRef](
           aliasParser.orElse(columnRefParser),
           From
         )(tail)
@@ -108,7 +85,7 @@ object Parsers {
       }
 
   // What an actual fuck? How does it even work?
-  // When parsing multiple nested bool expr for example ((1=1) and true), how can you decide that after second ( 
+  // When parsing multiple nested bool expr for example ((1=1) and id = 0), how can you decide that after second ( 
   // you need to start parsing BasicBoolExpr instead of ComplexBoolExpr
   lazy val boolExprParserIntermediate: Parser[BoolExpr] = {
     val parser = betweenParser

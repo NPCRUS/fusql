@@ -2,6 +2,7 @@ import Ast.*
 import org.scalatest.EitherValues
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
+import Utils._
 
 class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
 
@@ -12,37 +13,21 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
   private val comaParser: Parser[Symbols.Coma.type] = Parser.token(Symbols.Coma)
 
   "token" in {
-    val inOut = List(
+    val inOut: Seq[(String, ErrOr[ParserResult[Symbols.Coma.type]])] = List(
       ("*", Left("")),
       (",", Right(ParserResult(Symbols.Coma, Seq.empty))),
     )
 
-    inOut.foreach { (in, expectation) =>
-      val result = Preprocessor(in).flatMap(comaParser.apply)
-      expectation match {
-        case Right(value) =>
-          result.value shouldBe value
-        case Left(_) =>
-          result.isLeft shouldBe true
-      }
-    }
+    checkParser(comaParser)(inOut)
   }
 
   "andThen" in {
-    val inOut = List(
-      ("*", Left("")),
+    val inOut: Seq[(String, ErrOr[ParserResult[(String, Symbols.Coma.type)]])] = List(
       ("*,", Right(ParserResult(("good", Symbols.Coma), Seq.empty))),
+      ("*", Left("")),
     )
 
-    inOut.foreach { (in, expectation) =>
-      val result = Preprocessor(in).flatMap(starParser.andThen(comaParser).apply)
-      expectation match {
-        case Right(value) =>
-          result.value shouldBe value
-        case Left(_) =>
-          result.isLeft shouldBe true
-      }
-    }
+    checkParser(starParser.andThen(comaParser))(inOut)
   }
 
   "option" in {
@@ -70,15 +55,7 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
       ("(*)", Right(ParserResult("good", Seq.empty)))
     )
 
-    inOut.foreach { (in, expectation) =>
-      val result = Preprocessor(in).flatMap(starParser.enclosed.apply)
-      expectation match {
-        case Right(value) =>
-          result.value shouldBe value
-        case Left(_) =>
-          result.isLeft shouldBe true
-      }
-    }
+    checkParser(starParser.enclosed)(inOut)
   }
 
   "orEnclosed" in {
@@ -88,14 +65,15 @@ class ParserSpec extends AnyWordSpecLike with Matchers with EitherValues {
       ("(*)", Right(ParserResult("good", Seq.empty)))
     )
 
-    inOut.foreach { (in, expectation) =>
-      val result = Preprocessor(in).flatMap(starParser.orEnclosed.apply)
-      expectation match {
-        case Right(value) =>
-          result.value shouldBe value
-        case Left(_) =>
-          result.isLeft shouldBe true
-      }
-    }
+    checkParser(starParser.orEnclosed)(inOut)
+  }
+
+  "seq" in {
+    val inOut = List(
+      ("*, * FROM", Right(ParserResult(List("good", "good"), Seq.empty))),
+      ("*,,", Left(""))
+    )
+
+    checkParser(Parser.seq(starParser, Symbols.From))(inOut)
   }
 }

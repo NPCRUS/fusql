@@ -72,8 +72,8 @@ object ConfigApplicator {
     val accOrError = query.from match
       case StrToken(table) => Right(Acc(config, Map(table -> table)))
       case TableAlias(StrToken(table), alias) => Right(Acc(config, Map(table -> table, alias -> table)))
-      case TableAlias(_: Expr, alias) => Right(Acc(config, Map.empty))
       case TableAlias(q: Query, alias) => check(config, q)
+      case TableAlias(_: Expr, alias) => Right(Acc(config, Map.empty))
 
     for {
       acc <- accOrError

@@ -1,5 +1,7 @@
 import Ast.Token
-import Ast.Symbols._
+import Ast.Symbols.*
+
+import scala.annotation.tailrec
 
 // TODO: https://com-lihaoyi.github.io/fastparse/#ExampleParsers
 // Omnipresent Li Haoyi made library for this as well
@@ -13,6 +15,10 @@ sealed trait Parser[T] {
   def apply(input: Seq[Token]): ErrOr[ParserResult[T]]
   
   def name: String
+  
+  def withName(name: String): Parser[T] = ParserImpl(s"$name(${this.name})")(this.apply)
+  
+  private def replaceName(name: String): Parser[T] = ParserImpl(name)(this.apply)
 
   def flatMap[B](f: ParserResult[T] => ErrOr[ParserResult[B]]): Parser[B] = ParserImpl(name) { seq =>
     apply(seq).flatMap(f)
@@ -36,20 +42,20 @@ sealed trait Parser[T] {
         that.apply(rest).map { result =>
           result.copy(result = (t, result.result))
         }
-    }
+    }.replaceName(s"${this.name} and ${that.name}")
     
-  def option: Parser[Option[T]] = ParserImpl(name) { seq =>
+  def option: Parser[Option[T]] = ParserImpl(s"option($name)") { seq =>
     this.apply(seq) match
       case Left(value) => Right(ParserResult(None, seq))
       case Right(value) => Right(value.copy(result = Some(value.result)))
   }
 
-  def orEnclosed: Parser[T] = ParserImpl(name) {
+  def orEnclosed: Parser[T] = ParserImpl(s"orEnclosed($name)") {
     case seq@(BlockOpen +: tail) => this.andThen(Parser.token(BlockClose)).apply(tail).map(res => res.copy(result = res.result._1))
     case seq => this.apply(seq)
   }
   
-  def enclosed: Parser[T] = ParserImpl(name) {
+  def enclosed: Parser[T] = ParserImpl(s"enclosed($name)") {
     case BlockOpen +: tail => apply(tail).flatMap {
       case ParserResult(result, BlockClose +: tail) => Right(ParserResult(result, tail))
       case ParserResult(result, _) => Left(s"Didn't find ')' when trying to parse block of name")
@@ -84,6 +90,27 @@ object Parser {
 
   def token[T <: Token](t: Token): Parser[T] = partial(t.getClass.getSimpleName) {
     case (found: Token) +: tail if t.repr == found.repr => ParserResult(t.asInstanceOf[T], tail)
+  }
+
+  def seq[T](p: Parser[T], until: Token): Parser[Seq[T]] = {
+    @tailrec
+    def inner(rest: Seq[Token], acc: Seq[T]): Either[String, ParserResult[Seq[T]]] = {
+      p.apply(rest) match
+        case Left(err) =>
+          Left(s"Cannot parse sequence: $err")
+        case Right(ParserResult(result, Seq())) =>
+          Right(ParserResult(acc :+ result, Seq()))
+        case Right(ParserResult(result, head +: tail)) if head == until =>
+          Right(ParserResult(acc :+ result, tail))
+        case Right(ParserResult(result, Coma +: tail)) =>
+          inner(tail, acc :+ result)
+        case Right(ParserResult(_, head +: tail)) =>
+          Left(s"Cannot parse sequence, bumped into ${head.toString}, rest: ${tail.mkString(" ")}")
+    }
+
+    Parser(s"seq(${p.name}") { tokens =>
+      inner(tokens, Seq.empty)
+    }
   }
 
 }
