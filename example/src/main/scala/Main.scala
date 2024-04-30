@@ -36,8 +36,7 @@ object Main extends cask.MainRoutes {
           case Ast.ColumnRef(cl, _) => cl
           case Ast.Alias(_, cl) => cl
         }
-
-        println(fields)
+        
         write(
           Await.result(
             db.run {
