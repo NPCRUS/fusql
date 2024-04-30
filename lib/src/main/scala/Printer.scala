@@ -38,6 +38,7 @@ object Printer {
     case e: Literal => e.print
     case e: FunctionCall => e.print
     case e: Query => e.print
+    case e: Symbols.Null.type => "null"
   }
 
   given booleanExprOperandPrinter: Printer[BooleanExprOperand] = {

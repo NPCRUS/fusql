@@ -14,6 +14,7 @@ object Ast {
     case Coma extends Symbols(",")
     case BlockOpen extends Symbols("(")
     case BlockClose extends Symbols(")")
+    case Null extends Symbols("null") with Expr
 
     def eq(str: String): Boolean = token == str.toLowerCase
     

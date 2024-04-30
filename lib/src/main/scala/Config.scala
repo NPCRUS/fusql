@@ -1,10 +1,10 @@
 import Parsers.{columnRefParser, parse, queryParser}
 import Ast.*
 
-case class TableConfig(tableName: String, forbiddenColumns: Seq[String], contextFilter: Option[BasicBoolExpr]) {
+case class TableConfig(tableName: String, forbiddenColumns: Seq[String], contextFilter: Option[BoolExpr]) {
   def forbid(columnName: String): TableConfig = this.copy(forbiddenColumns = this.forbiddenColumns :+ columnName)
 
-  def filter(expr: BasicBoolExpr): TableConfig = this.copy(contextFilter = Some(expr))
+  def filter(expr: BoolExpr): TableConfig = this.copy(contextFilter = Some(expr))
 }
 
 object Config {
@@ -51,18 +51,28 @@ object ConfigApplicator {
         config.seq.filter(_.tableName == tableFromMap).collectFirst {
           case tc@TableConfig(_, _, Some(cf)) => cf
         }.flatMap { contextFilter =>
-          Seq(contextFilter.a, contextFilter.b).collect {
-            case cr: ColumnRef => cr
-          }.find(_.column == column).map(c => s"Column $column is used for context filtering, remove")
+          extractColumnRef(contextFilter)
+            .find(_.column == column)
+            .map(c => s"Column $column is used for context filtering, remove")
         }
       case ColumnRef(column, None) =>
         config.seq.collect {
           case TableConfig(_, _, Some(contextFilter)) => contextFilter
         }.find { expr =>
-          Seq(expr.b, expr.b).collect {
-            case cr: ColumnRef => cr
-          }.exists(_.column == column)
+          extractColumnRef(expr)
+            .exists(_.column == column)
         }.map(c => s"Column $column is used for context filtering, remove")
+
+    def extractColumnRef(boolExpr: BoolExpr): Seq[ColumnRef] = boolExpr match
+      case cr: ColumnRef => Seq(cr)
+      case BasicBoolExpr(_, a, b)
+      => Seq(a, b).collect {
+        case cr: ColumnRef => cr
+      }
+      case BetweenExpr(a, b, c) => Seq(a, b, c).collect {
+        case cr: ColumnRef => cr
+      }
+      case ComplexBoolExpr(_, a, b) => extractColumnRef(a) ++ extractColumnRef(b)
 
     def checkForError(columnRef: ColumnRef): Option[String] =
       isForbidden(columnRef).orElse(containsFilteredColumn(columnRef))
