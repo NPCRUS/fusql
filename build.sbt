@@ -6,6 +6,7 @@ lazy val lib = (project in file("lib"))
   .settings(
     name := "frontend-sql",
     libraryDependencies ++= Seq(
+      "com.lihaoyi" %% "fastparse" % "3.1.0",
       "org.scalatest" %% "scalatest" % "3.2.18" % "test" // TODO: use munit
     )
   )
