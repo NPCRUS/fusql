@@ -18,32 +18,38 @@ object astV2 {
 
   // ----------------------------------------------------------------
 
+  object ColumnName {
+    def apply(s: String): ColumnName = s
+  }
   opaque type ColumnName = String
 
   type ColumnFrom = TableName | Schema
-  case class Column(column: ColumnName, from: ColumnFrom)
-
-  case class WildcardFrom(from: ColumnFrom)
-
-  type SelectAliasInput = ColumnName | Column | AggFunction | Query
-  case class SelectAlias(input: SelectAliasInput, alias: String)
-
-  type AggFunctionArg = ColumnName | Literal
-  case class AggFunction(name: String, args: Seq[AggFunctionArg])
+  case class Column(from: ColumnFrom, column: ColumnName)
 
   type ColumnRef = Column | ColumnName
 
+  case class WildcardFrom(from: ColumnFrom)
+
+  type AggFunctionArg = ColumnRef | Literal
+  case class AggFunction(name: String, args: Seq[AggFunctionArg])
+
+  type SelectAliasInput = ColumnRef | AggFunction | Query
+  case class SelectAlias(input: SelectAliasInput, alias: String)
+
   // ----------------------------------------------------------------
 
+  object TableName {
+    def apply(s: String): TableName = s
+  }
   opaque type TableName = String
 
-  case class Schema(table: TableName)
-
-  type TableAliasInput = TableName | Schema | Query
-
-  case class TableAlias(input: TableAliasInput, alias: String)
+  case class Schema(schema: String, table: TableName)
 
   type TableRef = TableName | Schema
+
+  type TableAliasInput = TableRef | Query
+  case class TableAlias(input: TableAliasInput, alias: String)
+  
   sealed trait Join
   object Join {
     type JoinRef = TableRef | TableAlias
@@ -58,7 +64,7 @@ object astV2 {
   sealed trait ComparisonOperator
 
   object ComparisonOperator {
-    type ComparisonOperand = Column | Literal
+    type ComparisonOperand = ColumnRef | Literal
 
     case class Eq(left: ColumnRef, right: ComparisonOperand) extends ComparisonOperator
     case class NotEq(left: ColumnRef, right: ComparisonOperand) extends ComparisonOperator
@@ -78,7 +84,7 @@ object astV2 {
   sealed trait LogicalOperator
 
   object LogicalOperator {
-    type LogicalOperand = ComparisonOperator | ColumnFrom | LogicalOperator
+    type LogicalOperand = ComparisonOperator | ColumnRef | LogicalOperator
 
     case class And(left: LogicalOperand, right: LogicalOperand)
     case class Or(left: LogicalOperand, right: LogicalOperand)
@@ -106,7 +112,7 @@ object astV2 {
 
   case object Wildcard
   
-  type SelectExpr = Wildcard.type | WildcardFrom | ColumnName | ColumnFrom | SelectAlias
+  type SelectExpr = Wildcard.type | WildcardFrom | ColumnRef | SelectAlias
   
   type FromExpr = TableName | Schema | TableAlias | Join
   
